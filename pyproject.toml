@@ -1,0 +1,31 @@
+[project]
+name = "gamegate"
+version = "0.1.0"
+description = "Detects gaming sessions, holds non-urgent Gmail/Slack/Discord messages, and delivers a post-game digest."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.52",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "httpx>=0.28",
+    "ruff>=0.16",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# No importable packages yet — the app/ package arrives with the /health issue (#3).
+packages = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
