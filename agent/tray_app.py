@@ -27,7 +27,7 @@ from pathlib import Path
 
 from branding import render_badge
 from detector import ApiClient, Detector, load_config, psutil_process_lister
-from overlay import enable_dpi_awareness, show_overlay
+from overlay import enable_dpi_awareness, show_overlay, show_update_prompt
 
 SINGLE_INSTANCE_PORT = 47653  # arbitrary fixed port; second launch fails the bind
 
@@ -242,6 +242,34 @@ def _darken_titlebar(window) -> None:
         log.exception("Dark titlebar not applied")
 
 
+class UpdateChecker:
+    """Dev-tier update detection: how many commits is origin/main ahead?
+    (The public release-based tier is issue #72.)"""
+
+    def __init__(self, repo_dir: Path, run_fn=None) -> None:
+        self.repo_dir = repo_dir
+        self.run = run_fn or self._run_git
+
+    def _run_git(self, args: list[str]) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(self.repo_dir), *args],
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+            return result.stdout.strip() if result.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    def pending_changes(self) -> int:
+        if self.run(["fetch", "--quiet"]) is None:
+            return 0
+        count = self.run(["rev-list", "HEAD..origin/main", "--count"])
+        try:
+            return int(count)
+        except (TypeError, ValueError):
+            return 0
+
+
 def update_script_path() -> Path:
     """agent/update.ps1, whether we're the frozen exe (agent/dist/GameGate.exe)
     or running from source (agent/tray_app.py)."""
@@ -378,8 +406,27 @@ def run_tray() -> None:
 
     signal.signal(signal.SIGINT, handle_sigint)
 
+    def update_check_loop():
+        checker = UpdateChecker(update_script_path().parent.parent)
+        stop.wait(20)  # let the app settle before the first check
+        while not stop.is_set():
+            try:
+                count = checker.pending_changes()
+                if count > 0:
+                    wants_update = show_update_prompt(count)
+                    if wants_update and launch_updater():
+                        stop.set()
+                        icon.stop()
+                        return
+                    stop.wait(4 * 3600)  # Later → snooze four hours
+                    continue
+            except Exception:
+                log.exception("Update check failed")
+            stop.wait(3600)  # check hourly
+
     threading.Thread(target=detector_loop, daemon=True).start()
     threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
+    threading.Thread(target=update_check_loop, daemon=True).start()
     icon.run()
 
 

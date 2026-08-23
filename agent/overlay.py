@@ -256,3 +256,63 @@ def show_overlay(
     except Exception:
         log.exception("Overlay failed")
         return False
+
+
+def show_update_prompt(change_count: int) -> bool:
+    """'Update available' card with real buttons (Jules' spec). Returns True
+    for Update now, False for Later/dismiss. Blocking; call from a worker."""
+    try:
+        import tkinter as tk
+
+        result = {"update": False}
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        scale = max(1.0, root.winfo_fpixels("1i") / 96.0)
+
+        def px(value: float) -> int:
+            return int(value * scale)
+
+        width, height = px(360), px(150)
+        screen_w = root.winfo_screenwidth()
+        root.geometry(f"{width}x{height}+{screen_w - width - px(16)}+{px(16)}")
+        root.configure(bg=BG, highlightthickness=1, highlightbackground=EDGE)
+
+        tk.Label(
+            root, text="Update available", bg=BG, fg=FG_TITLE,
+            font=("Segoe UI", -px(16), "bold"), anchor="w",
+        ).pack(fill="x", padx=px(18), pady=(px(16), px(2)))
+        tk.Label(
+            root,
+            text=f"{change_count} new change{'s' if change_count != 1 else ''} ready to install.",
+            bg=BG, fg=FG_BODY, font=("Segoe UI", -px(12)), anchor="w",
+        ).pack(fill="x", padx=px(18))
+
+        row = tk.Frame(root, bg=BG)
+        row.pack(fill="x", padx=px(18), pady=px(14))
+
+        def choose(update: bool) -> None:
+            result["update"] = update
+            root.destroy()
+
+        update_btn = tk.Button(
+            row, text="Update now", command=lambda: choose(True),
+            bg=ACCENT, fg="#ffffff", activebackground="#8b5cf6",
+            activeforeground="#ffffff", relief="flat", bd=0,
+            font=("Segoe UI", -px(12), "bold"), padx=px(14), pady=px(6), cursor="hand2",
+        )
+        update_btn.pack(side="left")
+        tk.Button(
+            row, text="Later", command=lambda: choose(False),
+            bg=BG, fg=FG_MUTED, activebackground=EDGE, activeforeground=FG_BODY,
+            relief="flat", bd=0, font=("Segoe UI", -px(12)),
+            padx=px(14), pady=px(6), cursor="hand2",
+        ).pack(side="left", padx=(px(8), 0))
+
+        root.after(60_000, root.destroy)  # auto-Later after a minute
+        play_sound()
+        root.mainloop()
+        return result["update"]
+    except Exception:
+        log.exception("Update prompt failed")
+        return False
