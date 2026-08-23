@@ -21,6 +21,17 @@ def test_card_hugs_content_but_caps_at_15_percent():
     assert tall == int(1080 * 0.15)  # Jules' 15% is the MAX, not the fixed size
 
 
+def test_card_height_scales_with_dpi():
+    """Windows 150% scaling: layout must grow with the fonts or the countdown
+    bar runs through the text (Jules' live find)."""
+    normal = compute_card_height(body_lines=2, screen_h=2160, scale=1.0)
+    scaled = compute_card_height(body_lines=2, screen_h=2160, scale=1.5)
+    assert scaled == int(
+        (12 + 34 + 24 + 2 * 19 + 12 + 6) * 1.5
+    )
+    assert scaled > normal
+
+
 def test_geometry_is_top_right():
     width, height, x, y = compute_geometry(1920, 1080, height=120)
     assert height == 120

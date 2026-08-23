@@ -57,10 +57,12 @@ def enable_dpi_awareness() -> None:
         log.debug("DPI awareness not applied (non-Windows or already set)")
 
 
-def compute_card_height(body_lines: int, screen_h: int) -> int:
-    """Content-hugging height, clamped to [MIN_HEIGHT, 15% of screen]."""
-    wanted = V_PAD + HEADER_H + TITLE_H + body_lines * LINE_H + V_PAD + 4
-    return max(MIN_HEIGHT, min(wanted, int(screen_h * MAX_HEIGHT_FRACTION)))
+def compute_card_height(body_lines: int, screen_h: int, scale: float = 1.0) -> int:
+    """Content-hugging height, clamped to [MIN_HEIGHT, 15% of screen].
+    scale = DPI factor: layout must grow with Windows display scaling or the
+    (DPI-scaled) text outgrows its pixel budget — Jules' bar-through-text bug."""
+    wanted = int((V_PAD + HEADER_H + TITLE_H + body_lines * LINE_H + V_PAD + 6) * scale)
+    return max(int(MIN_HEIGHT * scale), min(wanted, int(screen_h * MAX_HEIGHT_FRACTION)))
 
 
 def compute_geometry(
@@ -117,9 +119,21 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
             transparent_ok = False
 
         screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
+        # DPI scale factor: 1.0 at 100% Windows scaling, 1.5 at 150%, etc.
+        # Fonts use negative (pixel) sizes derived from the same factor, so
+        # text and layout can never disagree again.
+        scale = max(1.0, root.winfo_fpixels("1i") / 96.0)
+
+        def px(value: float) -> int:
+            return int(value * scale)
+
         width = int(screen_w * WIDTH_FRACTION)
-        body_font = tkfont.Font(family="Segoe UI", size=10)
-        text_width = width - TEXT_X - 28
+        title_font = tkfont.Font(family="Segoe UI", size=-px(17), weight="bold")
+        body_font = tkfont.Font(family="Segoe UI", size=-px(13))
+        muted_font = tkfont.Font(family="Segoe UI", size=-px(11))
+        muted_bold = tkfont.Font(family="Segoe UI", size=-px(11), weight="bold")
+        text_x = px(TEXT_X)
+        text_width = width - text_x - px(28)
 
         # Estimate wrapped body lines so the card hugs its content.
         body_lines = 0
@@ -127,7 +141,7 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
             body_lines += max(1, -(-body_font.measure(paragraph) // text_width))
         body_lines = min(body_lines, 6)
 
-        height = compute_card_height(body_lines, screen_h)
+        height = compute_card_height(body_lines, screen_h, scale)
         width, height, x, y = compute_geometry(screen_w, screen_h, height)
         root.geometry(f"{width}x{height}+{x}+{y}")
 
@@ -147,45 +161,46 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
         )
 
         # Header row: badge · GAMEGATE · now · ✕
-        badge = _badge_photo()
-        header_y = V_PAD + 10
+        badge = _badge_photo(px(22))
+        header_y = px(V_PAD + 10)
         if badge is not None:
-            canvas.create_image(TEXT_X, header_y, image=badge, anchor="w")
+            canvas.create_image(text_x, header_y, image=badge, anchor="w")
             root._badge_ref = badge  # keep a reference or Tk garbage-collects it
-            name_x = TEXT_X + 30
+            name_x = text_x + px(30)
         else:
-            name_x = TEXT_X
+            name_x = text_x
         canvas.create_text(
             name_x, header_y, text="GAMEGATE", anchor="w", fill=FG_MUTED,
-            font=("Segoe UI", 8, "bold"),
+            font=muted_bold,
         )
         canvas.create_text(
-            width - 44, header_y, text="now", anchor="e", fill=FG_MUTED,
-            font=("Segoe UI", 8),
+            width - px(44), header_y, text="now", anchor="e", fill=FG_MUTED,
+            font=muted_font,
         )
         close = canvas.create_text(
-            width - 24, header_y, text="✕", anchor="center", fill=FG_MUTED,
-            font=("Segoe UI", 10),
+            width - px(24), header_y, text="✕", anchor="center", fill=FG_MUTED,
+            font=muted_font,
         )
         canvas.tag_bind(close, "<Button-1>", lambda _e: root.destroy())
 
         # Title + body.
-        title_y = V_PAD + HEADER_H
+        title_y = px(V_PAD + HEADER_H)
         canvas.create_text(
-            TEXT_X, title_y, text=title, anchor="nw", fill=FG_TITLE,
-            font=("Segoe UI", 12, "bold"), width=text_width,
+            text_x, title_y, text=title, anchor="nw", fill=FG_TITLE,
+            font=title_font, width=text_width,
         )
         canvas.create_text(
-            TEXT_X, title_y + TITLE_H, text=body, anchor="nw", fill=FG_BODY,
+            text_x, title_y + px(TITLE_H), text=body, anchor="nw", fill=FG_BODY,
             font=body_font, width=text_width,
         )
 
         # Countdown line along the bottom — shrinks as time runs out.
-        track_x1, track_x2 = TEXT_X, width - 20
-        track_y = height - 10
-        canvas.create_line(track_x1, track_y, track_x2, track_y, fill=EDGE, width=3)
+        track_x1, track_x2 = text_x, width - px(20)
+        track_y = height - px(10)
+        bar_w = max(2, px(3))
+        canvas.create_line(track_x1, track_y, track_x2, track_y, fill=EDGE, width=bar_w)
         countdown = canvas.create_line(
-            track_x1, track_y, track_x2, track_y, fill=ACCENT, width=3
+            track_x1, track_y, track_x2, track_y, fill=ACCENT, width=bar_w
         )
         steps = duration_s * 20
 
