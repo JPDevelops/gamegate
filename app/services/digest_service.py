@@ -1,6 +1,13 @@
 """Deterministic digest builder. Same events in → same digest out. No AI."""
 from app.models.event import Event, EventPriority
 
+
+def format_duration(seconds: int) -> str:
+    minutes, secs = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m" if hours else f"{minutes}m {secs:02d}s"
+
+
 PRIORITY_ORDER = [
     EventPriority.URGENT,
     EventPriority.ACTIONABLE,
@@ -35,13 +42,11 @@ def render_text(digest: dict) -> str:
     lines = []
     session = digest.get("session")
     if session and session.get("duration_seconds") is not None:
-        minutes, seconds = divmod(session["duration_seconds"], 60)
-        hours, minutes = divmod(minutes, 60)
-        duration = f"{hours}h {minutes:02d}m" if hours else f"{minutes}m {seconds:02d}s"
+        duration = format_duration(session["duration_seconds"])
         app_name = session.get("application") or "unknown game"
-        lines.append(f"Gaming session complete — {app_name}, {duration}")
+        lines.append(f"Game Recap — {app_name}, {duration}")
     else:
-        lines.append("Digest")
+        lines.append("Recap")
 
     counts = digest["counts_by_priority"]
     lines.append(

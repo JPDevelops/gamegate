@@ -20,39 +20,56 @@
   #win-controls button:hover { background:var(--panel2); color:var(--text); }
   #win-controls .close:hover { background:var(--red); color:#fff; }
   .logo { width:26px; height:26px; border-radius:7px; background:var(--panel2);
-          display:grid; place-items:center; }
+          display:grid; place-items:center; flex:none; }
   .logo::after { content:""; width:12px; height:12px; border-radius:50%;
                  border:3px solid var(--accent); }
   h1 { font-size:16px; letter-spacing:.18em; }
-  #state-pill { margin-left:auto; border:1px solid var(--line); border-radius:99px;
-                padding:4px 14px; font-size:13px; color:var(--muted); }
+  #state-pill { border:1px solid var(--line); border-radius:99px;
+                padding:4px 14px; font-size:13px; color:var(--muted); white-space:nowrap; }
   #state-pill.gaming { color:var(--accent2); border-color:var(--accent); }
   nav { display:flex; gap:4px; padding:10px 18px 0; border-bottom:1px solid var(--line); }
-  nav button { background:none; border:none; color:var(--muted); font:inherit;
-               padding:10px 16px; cursor:pointer; border-bottom:2px solid transparent; }
-  nav button.active { color:var(--text); border-bottom-color:var(--accent); }
+  nav a { background:none; border:none; color:var(--muted); font:inherit; text-decoration:none;
+          padding:10px 16px; cursor:pointer; border-bottom:2px solid transparent; }
+  nav a.active { color:var(--text); border-bottom-color:var(--accent); }
   main { max-width:860px; margin:0 auto; padding:22px 18px 60px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px;
           padding:16px 18px; margin-bottom:12px; }
+  .card.click { cursor:pointer; transition:border-color .12s, transform .12s; }
+  .card.click:hover { border-color:var(--accent); transform:translateY(-1px); }
   .row { display:flex; align-items:center; gap:10px; }
   .muted { color:var(--muted); font-size:13px; }
+  .sub { color:var(--muted); font-size:13.5px; margin:-4px 0 16px; }
   .chip { font-size:11px; padding:2px 9px; border-radius:99px; border:1px solid var(--line);
-          color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+          color:var(--muted); text-transform:uppercase; letter-spacing:.06em; flex:none; }
   .chip.urgent { color:#fff; background:var(--red); border-color:var(--red); }
   .chip.actionable { color:#111; background:var(--amber); border-color:var(--amber); }
   .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
   .dot.ok { background:var(--green); } .dot.warn { background:var(--amber); }
   .dot.off { background:var(--line); }
-  .digest-text { white-space:pre-wrap; background:var(--panel2); border-radius:8px;
-                 padding:12px; font-size:13.5px; margin-top:8px; }
   .btn { background:var(--accent); border:none; color:#fff; border-radius:8px;
          padding:8px 16px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
-  .section-title { font-size:13px; letter-spacing:.14em; color:var(--muted);
-                   text-transform:uppercase; margin:22px 0 10px; }
-  .empty { text-align:center; color:var(--muted); padding:40px 0; }
+  .empty { text-align:center; color:var(--muted); padding:56px 16px; }
+  .empty .big { font-size:34px; margin-bottom:10px; }
   table.settings { width:100%; border-collapse:collapse; }
   table.settings td { padding:9px 4px; border-bottom:1px solid var(--line); font-size:14px; }
   table.settings td:first-child { color:var(--muted); width:45%; }
+  .recap-game { font-size:17px; font-weight:600; }
+  .recap-duration { font-size:26px; font-weight:700; color:var(--accent2);
+                    margin-left:auto; flex:none; }
+  .back { color:var(--accent2); text-decoration:none; font-size:14px;
+          display:inline-block; margin-bottom:14px; }
+  .hero { background:linear-gradient(135deg, #221a3f, var(--panel)); border:1px solid var(--line);
+          border-radius:14px; padding:24px; margin-bottom:16px; }
+  .hero .game { font-size:22px; font-weight:700; }
+  .hero .dur { font-size:44px; font-weight:800; color:var(--accent2); line-height:1.15; }
+  .hero .meta { color:var(--muted); margin-top:6px; }
+  .stat-row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  .stat { background:#00000030; border:1px solid var(--line); border-radius:10px;
+          padding:10px 18px; text-align:center; }
+  .stat b { display:block; font-size:20px; }
+  .stat span { font-size:12px; color:var(--muted); }
+  .section-title { font-size:13px; letter-spacing:.14em; color:var(--muted);
+                   text-transform:uppercase; margin:22px 0 10px; }
 </style>
 </head>
 <body>
@@ -67,87 +84,134 @@
   </div>
 </header>
 <nav>
-  <button data-tab="inbox" class="active">Inbox</button>
-  <button data-tab="connections">Connections</button>
-  <button data-tab="settings">Settings</button>
+  <a href="#/recaps" data-route="recaps">Game Recaps</a>
+  <a href="#/messages" data-route="messages">Messages</a>
+  <a href="#/connections" data-route="connections">Connections</a>
+  <a href="#/settings" data-route="settings">Settings</a>
 </nav>
-<main>
-  <section id="tab-inbox">
-    <div class="section-title">Digests</div>
-    <div id="digests"><div class="empty">Loading…</div></div>
-    <div class="section-title">Recent messages</div>
-    <div id="events"><div class="empty">Loading…</div></div>
-  </section>
-  <section id="tab-connections" hidden>
-    <div id="connections"><div class="empty">Loading…</div></div>
-  </section>
-  <section id="tab-settings" hidden>
-    <div class="card"><table class="settings" id="settings-table"></table></div>
-  </section>
-</main>
+<main id="view"></main>
 <script>
-const $ = (s) => document.querySelector(s);
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
-  b.classList.add("active");
-  ["inbox","connections","settings"].forEach(t => $("#tab-"+t).hidden = t !== b.dataset.tab);
-});
+const view = document.querySelector("#view");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
-  if (m < 1) return "now"; if (m < 60) return Math.floor(m)+"m ago";
-  if (m < 1440) return Math.floor(m/60)+"h ago"; return Math.floor(m/1440)+"d ago"; };
+  if (m < 1) return "just now"; if (m < 60) return Math.floor(m)+" min ago";
+  if (m < 1440) return Math.floor(m/60)+" h ago";
+  return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric"}); };
+const fmtDur = (s) => { const m = Math.floor(s/60), h = Math.floor(m/60);
+  return h ? h+"h "+String(m%60).padStart(2,"0")+"m" : m+"m "+String(s%60).padStart(2,"0")+"s"; };
+const SRC = { gmail:"✉️", discord:"💬", slack:"#️⃣", system:"⚙️" };
 
+let cache = { recaps: [], events: [], connections: null, status: null };
 async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
 
-async function load() {
+async function refresh() {
   try {
-    const status = await j("/status");
-    const pill = $("#state-pill");
-    pill.textContent = status.state === "gaming"
-      ? "🎮 gaming — " + (status.application || "") : status.state;
-    pill.className = status.state === "gaming" ? "gaming" : "";
+    [cache.status, cache.events, cache.recaps, cache.connections] = await Promise.all([
+      j("/status"), j("/events?limit=100"), j("/digests?limit=20"), j("/connections"),
+    ]);
+    const pill = document.querySelector("#state-pill");
+    pill.textContent = cache.status.state === "gaming"
+      ? "🎮 gaming — " + (cache.status.application || "") : cache.status.state;
+    pill.className = cache.status.state === "gaming" ? "gaming" : "";
+  } catch (e) { /* login expired — views show their own message */ }
+}
 
-    const events = await j("/events?limit=50");
-    $("#events").innerHTML = events.length ? events.map(e => `
-      <div class="card row">
-        <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
-        <div style="min-width:0">
-          <div>${esc(e.sender)} — ${esc(e.title)}</div>
-          <div class="muted">${esc(e.source)} · ${ago(e.received_at)}</div>
-        </div>
-      </div>`).join("") : '<div class="empty">Nothing caught yet.</div>';
+function recapCard(d) {
+  const s = d.session || {};
+  const actions = (d.action_required || []).length;
+  return `<div class="card click row" onclick="location.hash='#/recap/${esc(d.id)}'">
+    <div style="min-width:0">
+      <div class="recap-game">🎮 ${esc(s.application || "Session")}</div>
+      <div class="muted">${ago(d.created_at)} · ${d.total_events} message${d.total_events===1?"":"s"}${actions ? ` · <span style="color:var(--amber)">${actions} need action</span>` : ""}</div>
+    </div>
+    <div class="recap-duration">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : ""}</div>
+  </div>`;
+}
 
-    const digests = await j("/digests?limit=5");
-    $("#digests").innerHTML = digests.length ? digests.map(d => `
-      <div class="card">
-        <div class="row"><strong>${esc((d.text||"Digest").split("\n")[0])}</strong>
-          <span class="muted" style="margin-left:auto">${ago(d.created_at)}</span></div>
-        <div class="digest-text">${esc(d.text)}</div>
-      </div>`).join("") : '<div class="empty">No digests yet — finish a gaming session.</div>';
-
-    const c = await j("/connections");
+const views = {
+  recaps() {
+    if (!cache.recaps.length) return `<div class="empty"><div class="big">🎮</div>
+      No recaps yet.<br>Finish a gaming session and your first Game Recap lands here.</div>`;
+    return `<div class="sub">Your session summaries — what happened while you played. Click one.</div>`
+      + cache.recaps.map(recapCard).join("");
+  },
+  recap(id) {
+    const d = cache.recaps.find(x => x.id === id);
+    if (!d) return `<a class="back" href="#/recaps">← All recaps</a><div class="empty">Recap not found.</div>`;
+    const s = d.session || {};
+    const counts = d.counts_by_priority || {};
+    const items = d.items || [];
+    const actions = d.action_required || [];
+    return `<a class="back" href="#/recaps">← All recaps</a>
+    <div class="hero">
+      <div class="game">🎮 ${esc(s.application || "Session")}</div>
+      <div class="dur">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : "—"}</div>
+      <div class="meta">${s.started_at ? new Date(s.started_at).toLocaleString() : ""} · ${ago(d.created_at)}</div>
+      <div class="stat-row">
+        <div class="stat"><b>${d.total_events}</b><span>messages held</span></div>
+        <div class="stat"><b>${counts.urgent ?? 0}</b><span>urgent</span></div>
+        <div class="stat"><b>${counts.actionable ?? 0}</b><span>actionable</span></div>
+        <div class="stat"><b>${actions.length}</b><span>need action</span></div>
+      </div>
+    </div>
+    ${actions.length ? `<div class="section-title">⚠ Needs your action</div>` + actions.map(i => `
+      <div class="card row"><span class="chip ${esc(i.priority)}">${esc(i.priority)}</span>
+        <div><div>${esc(i.sender)} — ${esc(i.title)}</div>
+        <div class="muted">${SRC[i.source]||""} ${esc(i.source)} · ${ago(i.received_at)}</div></div></div>`).join("") : ""}
+    <div class="section-title">Everything from this session</div>
+    ${items.length ? items.map(i => `
+      <div class="card row"><span class="chip ${esc(i.priority)}">${esc(i.priority)}</span>
+        <div><div>${esc(i.sender)} — ${esc(i.title)}</div>
+        <div class="muted">${SRC[i.source]||""} ${esc(i.source)} · ${ago(i.received_at)}</div></div></div>`).join("")
+      : `<div class="empty">A quiet session — nothing came in.</div>`}`;
+  },
+  messages() {
+    if (!cache.events.length) return `<div class="empty"><div class="big">📥</div>Nothing caught yet.</div>`;
+    return `<div class="sub">Every message GameGate has caught, newest first.</div>`
+      + cache.events.map(e => `
+      <div class="card row"><span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
+        <div style="min-width:0"><div>${esc(e.sender)} — ${esc(e.title)}</div>
+        <div class="muted">${SRC[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div></div>`).join("");
+  },
+  connections() {
+    const c = cache.connections;
+    if (!c) return `<div class="empty">Session expired — reopen your dashboard link.</div>`;
     const conn = (name, s) => `
       <div class="card row">
         <span class="dot ${s.state === "connected" ? "ok" : s.state === "needs setup" ? "warn" : "off"}"></span>
         <div><div>${name}</div><div class="muted">${esc(s.detail)}</div></div>
         ${s.action ? `<a class="btn" style="margin-left:auto" href="${s.action.href}">${esc(s.action.label)}</a>` : ""}
       </div>`;
-    $("#connections").innerHTML =
-      conn("Discord", c.discord) + conn("Gmail", c.gmail) +
-      conn("Slack", c.slack) + conn("AI classifier", c.classifier);
+    return conn("Discord", c.discord) + conn("Gmail", c.gmail)
+         + conn("Slack", c.slack) + conn("AI classifier", c.classifier);
+  },
+  settings() {
+    const c = cache.connections;
+    if (!c) return `<div class="empty">Session expired — reopen your dashboard link.</div>`;
+    return `<div class="card"><table class="settings">${
+      Object.entries(c.settings).map(([k,v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")
+    }</table></div>`;
+  },
+};
 
-    $("#settings-table").innerHTML = Object.entries(c.settings)
-      .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
-  } catch (err) {
-    $("#events").innerHTML = '<div class="empty">Session expired — reopen your dashboard link.</div>';
-  }
+function route() {
+  const hash = location.hash || "#/recaps";
+  const [, name, arg] = hash.split("/");
+  document.querySelectorAll("nav a").forEach(a =>
+    a.classList.toggle("active", a.dataset.route === (name === "recap" ? "recaps" : name)));
+  view.innerHTML = (views[name] || views.recaps)(arg);
 }
-load();
-setInterval(load, 15000);
-// Inside the desktop window (frameless), show our own window controls.
+
+window.addEventListener("hashchange", route);
 window.addEventListener("pywebviewready", () => {
   document.querySelector("#win-controls").style.display = "flex";
 });
+(async () => { await refresh(); route(); })();
+setInterval(async () => {
+  await refresh();
+  // don't stomp a recap the user is reading — only re-render list views
+  if (!location.hash.startsWith("#/recap/")) route();
+}, 15000);
 </script>
 </body>
 </html>

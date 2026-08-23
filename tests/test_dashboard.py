@@ -59,4 +59,4 @@ def test_digest_history_lists_recent_with_rendered_text(client):
     assert len(history) == 1
     assert history[0]["session_id"]
     # Jules' live find: cards rendered empty because text was never included.
-    assert "Gaming session complete" in history[0]["text"]
+    assert "Game Recap" in history[0]["text"]
