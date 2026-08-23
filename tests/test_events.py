@@ -1,11 +1,14 @@
 def make_event(**overrides):
+    from datetime import UTC, datetime
+
     event = {
         "source": "gmail",
         "external_id": "msg-001",
         "sender": "customer@example.com",
         "title": "Order has not arrived",
         "content": "My order from last week still isn't here.",
-        "received_at": "2026-08-22T10:00:00Z",
+        # fresh by default: stale events are deliberately never delivered now
+        "received_at": datetime.now(UTC).isoformat(),
         "priority": "actionable",
         "requires_action": True,
     }

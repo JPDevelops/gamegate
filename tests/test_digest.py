@@ -79,3 +79,19 @@ def test_digest_is_deterministic(client):
     latest = client.get("/digest/latest").json()
     titles = [item["title"] for item in latest["items"]]
     assert titles == ["event-c", "event-a"]
+
+
+def test_stale_events_never_interrupt(client):
+    """Initial-sync flood (live bug, 2026-08-23): old messages queue for the
+    digest even when routing would deliver them now."""
+    from datetime import UTC, datetime, timedelta
+
+    old = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+    fresh = datetime.now(UTC).isoformat()
+    # state = available → normally everything is deliver-now
+    client.post("/events", json=make_event(external_id="old-1", received_at=old))
+    client.post("/events", json=make_event(external_id="new-1", received_at=fresh))
+
+    pending = client.get("/notifications/pending").json()
+    assert [n["event"]["external_id"] for n in pending] == ["new-1"]
+    assert client.get("/digest").json()["total_events"] == 1  # the stale one queued
