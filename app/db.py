@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS digests (
     delivered INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS art_cache (
+    game TEXT PRIMARY KEY,
+    url TEXT NOT NULL DEFAULT '',
+    fetched_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
     id TEXT PRIMARY KEY,
     event_id TEXT NOT NULL REFERENCES events(id),

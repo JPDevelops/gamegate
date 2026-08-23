@@ -103,9 +103,12 @@ const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
 const fmtDur = (s) => { const m = Math.floor(s/60), h = Math.floor(m/60);
   return h ? h+"h "+String(m%60).padStart(2,"0")+"m" : m+"m "+String(s%60).padStart(2,"0")+"s"; };
 const SRC = { gmail:"✉️", discord:"💬", slack:"#️⃣", system:"⚙️" };
-const art = (s, cls) => s && s.app_id
-  ? `<img class="${cls}" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg"
-       onerror="this.remove()">` : "";
+const art = (s, cls) => {
+  if (!s) return "";
+  if (s.app_id) return `<img class="${cls}" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg" onerror="this.remove()">`;
+  if (s.application) return `<img class="${cls}" src="/art?game=${encodeURIComponent(s.application)}" onerror="this.remove()">`;
+  return "";
+};
 
 let cache = { recaps: [], events: [], connections: null, status: null };
 async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
