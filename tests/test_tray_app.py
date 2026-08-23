@@ -116,3 +116,11 @@ def test_single_instance_lock_blocks_second_copy():
     third = acquire_single_instance_lock()
     assert third is not None  # released cleanly after exit
     third.close()
+
+
+def test_window_url_carries_login_key():
+    from tray_app import build_window_url
+
+    url = build_window_url({"api_url": "http://server/", "api_token": "tok123"})
+    assert url == "http://server/app?key=tok123"
+    assert build_window_url({"api_url": "http://server"}) == "http://server/app"

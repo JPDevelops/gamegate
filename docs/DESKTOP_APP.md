@@ -8,14 +8,16 @@ Why an overlay instead of native Windows toasts: Focus Assist silences toasts du
 
 ```powershell
 py -m venv .venv ; .\.venv\Scripts\Activate.ps1
-pip install psutil pystray pillow winotify   # winotify only needed for toast mode
+pip install psutil pystray pillow pywebview   # (+ winotify only for toast mode)
 cd agent
 copy config.example.json config.json    # set api_url + api_token (games auto-detect)
 python tray_app.py
 ```
 
 A colored dot appears in the tray: 🟢 available · 🟣 gaming · 🔴 do-not-disturb.
-Right-click → Status / Last digest / Do Not Disturb / Quit.
+Right-click → **Open GameGate** (the desktop window: Inbox / Connections / Settings) / Status / Last digest / Do Not Disturb / Quit.
+
+The window uses Windows' built-in Edge WebView2 engine (preinstalled on Windows 11).
 
 ## Package into GameGate.exe
 
