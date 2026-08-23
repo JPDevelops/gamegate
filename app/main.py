@@ -7,6 +7,7 @@ from app import __version__
 from app import db as db_module
 from app.api.art import router as art_router
 from app.api.classify import router as classify_router
+from app.api.connectors import router as connectors_router
 from app.api.dashboard import router as dashboard_router
 from app.api.digest import router as digest_router
 from app.api.events import router as events_router
@@ -36,6 +37,7 @@ app.include_router(classify_router)
 app.include_router(gmail_oauth_router)
 app.include_router(dashboard_router)
 app.include_router(art_router)
+app.include_router(connectors_router)
 
 
 class HealthResponse(BaseModel):

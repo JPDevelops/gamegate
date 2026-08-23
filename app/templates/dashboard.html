@@ -73,6 +73,18 @@
   .stat span { font-size:12px; color:var(--muted); }
   .section-title { font-size:13px; letter-spacing:.14em; color:var(--muted);
                    text-transform:uppercase; margin:22px 0 10px; }
+  .btn.danger { background:var(--red); }
+  .btn.green { background:var(--green); }
+  .conn-actions { margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
+                  display:flex; gap:8px; }
+  .fab { position:fixed; right:22px; bottom:22px; background:var(--green); color:#fff;
+         border:none; border-radius:99px; padding:13px 22px; font:inherit; font-weight:600;
+         cursor:pointer; box-shadow:0 8px 24px #0008; z-index:9; }
+  .catalog-overlay { position:fixed; inset:0; background:#000a; z-index:10;
+                     display:grid; place-items:center; }
+  .catalog { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+             padding:22px; width:min(440px, 92vw); }
+  .catalog h2 { font-size:17px; margin-bottom:14px; }
 </style>
 </head>
 <body>
@@ -89,7 +101,7 @@
 <nav>
   <a href="#/recaps" data-route="recaps">Game Recaps</a>
   <a href="#/messages" data-route="messages">Messages</a>
-  <a href="#/connections" data-route="connections">Connections</a>
+  <a href="#/connections" data-route="connections">Connectors</a>
   <a href="#/settings" data-route="settings">Settings</a>
 </nav>
 <main id="view"></main>
@@ -187,14 +199,23 @@ const views = {
   connections() {
     const c = cache.connections;
     if (!c) return `<div class="empty">Session expired — reopen your dashboard link.</div>`;
-    const conn = (name, s) => `
-      <div class="card row">
-        <span class="dot ${s.state === "connected" ? "ok" : s.state === "needs setup" ? "warn" : "off"}"></span>
-        <div><div>${name}</div><div class="muted">${esc(s.detail)}</div></div>
-        ${s.action ? `<a class="btn" style="margin-left:auto" href="${s.action.href}">${esc(s.action.label)}</a>` : ""}
+    const conn = (id, name, s) => `
+      <div class="card click" onclick="toggleConn('${id}')">
+        <div class="row">
+          <span class="dot ${s.state === "connected" ? "ok" : s.state === "needs setup" ? "warn" : "off"}"></span>
+          <div><div>${name}</div><div class="muted">${esc(s.detail)}</div></div>
+          ${s.action ? `<a class="btn" style="margin-left:auto" href="${s.action.href}" onclick="event.stopPropagation()">${esc(s.action.label)}</a>` : ""}
+        </div>
+        <div class="conn-actions" id="acts-${id}" hidden>
+          ${s.can_disconnect ? `<button class="btn danger" onclick="event.stopPropagation();connAction('${id}','disconnect')">Disconnect</button>` : ""}
+          ${s.can_connect ? `<button class="btn green" onclick="event.stopPropagation();connAction('${id}','connect')">Connect</button>` : ""}
+          ${!s.can_disconnect && !s.can_connect ? `<span class="muted">No actions available</span>` : ""}
+        </div>
       </div>`;
-    return conn("Discord", c.discord) + conn("Gmail", c.gmail)
-         + conn("Slack", c.slack) + conn("AI classifier", c.classifier);
+    return `<div class="sub">Click a connector to manage it.</div>`
+      + conn("discord", "Discord", c.discord) + conn("gmail", "Gmail", c.gmail)
+      + conn("slack", "Slack", c.slack) + conn("classifier", "AI classifier", c.classifier)
+      + `<button class="fab" onclick="showCatalog()">＋ Add a connector</button>`;
   },
   settings() {
     const c = cache.connections;
@@ -213,6 +234,29 @@ function route() {
   view.innerHTML = (views[name] || views.recaps)(arg);
 }
 
+function toggleConn(id) {
+  const el = document.querySelector("#acts-" + id);
+  if (el) el.hidden = !el.hidden;
+}
+async function connAction(id, action) {
+  const r = await fetch(`/connectors/${id}/${action}`, { method: "POST" });
+  const body = await r.json().catch(() => ({}));
+  if (body.authorize) { location.href = body.authorize; return; }
+  if (!r.ok) { alert(body.detail || "That didn't work."); }
+  setTimeout(async () => { await refresh(); route(); }, 800);
+}
+function showCatalog() {
+  const c = cache.connections;
+  const overlay = document.createElement("div");
+  overlay.className = "catalog-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="catalog"><h2>Add a connector</h2>` +
+    (c ? c.catalog.map(item => `
+      <div class="card click row" onclick="this.closest('.catalog-overlay').remove();connAction('${item.id}','connect')">
+        <div><div>${esc(item.name)}</div><div class="muted">${esc(item.desc)}</div></div>
+      </div>`).join("") : "") + `</div>`;
+  document.body.appendChild(overlay);
+}
 window.addEventListener("hashchange", route);
 window.addEventListener("pywebviewready", () => {
   document.querySelector("#win-controls").style.display = "flex";
