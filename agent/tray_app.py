@@ -199,24 +199,47 @@ def open_window() -> None:
 
 def _darken_titlebar(window) -> None:
     """Native frame, dark trim: paint the Windows title bar in the app's own
-    colors via DWM. Restores everything frameless broke (Aero Snap, Win+arrow,
-    maximize) while keeping the chrome dark — Jules' both requirements."""
+    colors via DWM. Hardened after the first attempt silently failed on
+    Jules' build: the form handle may not exist yet when the start callback
+    fires, so retry, fall back to FindWindow by title, and re-apply once
+    after the first paint."""
     try:
         import ctypes
+        import time
 
-        handle = window.native.Handle
-        hwnd = handle.ToInt32() if hasattr(handle, "ToInt32") else int(handle)
-        dwm = ctypes.windll.dwmapi
-        one = ctypes.c_int(1)
-        for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (19 on older builds)
-            dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(one), ctypes.sizeof(one))
-        # Win11: exact caption + text colors (COLORREF is 0x00BBGGRR)
-        caption = ctypes.c_uint(0x00161110)  # our sidebar color #101116
-        text = ctypes.c_uint(0x00EFE8E6)     # our text color #e6e8ef
-        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), ctypes.sizeof(caption))
-        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), ctypes.sizeof(text))
-    except Exception:  # noqa: BLE001 — cosmetic; never block the window
-        log.debug("Dark titlebar not applied (pre-Win10 or non-Windows)")
+        def get_hwnd() -> int:
+            try:
+                handle = window.native.Handle
+                if hasattr(handle, "ToInt32"):
+                    return int(handle.ToInt32())
+                return int(handle)
+            except Exception:  # noqa: BLE001 — fall through to FindWindow
+                return int(ctypes.windll.user32.FindWindowW(None, "GameGate"))
+
+        def apply(hwnd: int) -> None:
+            dwm = ctypes.windll.dwmapi
+            one = ctypes.c_int(1)
+            for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (19 pre-1903)
+                dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(one), ctypes.sizeof(one))
+            caption = ctypes.c_uint(0x00161110)  # sidebar color #101116 as 0x00BBGGRR
+            text = ctypes.c_uint(0x00EFE8E6)     # text color #e6e8ef
+            dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), ctypes.sizeof(caption))
+            dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), ctypes.sizeof(text))
+
+        hwnd = 0
+        for _ in range(20):  # window/form may take a moment to materialize
+            hwnd = get_hwnd()
+            if hwnd:
+                break
+            time.sleep(0.25)
+        if hwnd:
+            apply(hwnd)
+            time.sleep(0.6)   # some builds repaint the caption on first show
+            apply(hwnd)
+        else:
+            log.warning("Dark titlebar: window handle never appeared")
+    except Exception:
+        log.exception("Dark titlebar not applied")
 
 
 def update_script_path() -> Path:
