@@ -16,24 +16,30 @@ class EventRepository:
     def __init__(self, db: Database) -> None:
         self.db = db
 
-    def add(self, incoming: EventIn) -> tuple[Event, bool]:
+    def add(self, incoming: EventIn, decision: str | None = None) -> tuple[Event, bool]:
         """Store an event. Returns (event, created). Idempotent on
-        (source, external_id): a duplicate returns the original, untouched."""
+        (source, external_id): a duplicate returns the original, untouched.
+        Events that are delivered immediately or suppressed are marked consumed
+        (delivered=1) so they never reappear in a digest."""
         existing = self.find_by_external_id(incoming.source.value, incoming.external_id)
         if existing is not None:
             return existing, False
         event = Event(**incoming.model_dump())
+        if decision is not None:
+            event.metadata["routing"] = decision
+        consumed = decision in ("deliver_now", "suppress")
         conn = self.db.connection()
         with conn:
             conn.execute(
                 "INSERT INTO events (id, source, external_id, sender, title, content,"
-                " received_at, priority, requires_action, metadata, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " received_at, priority, requires_action, metadata, created_at, delivered)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     event.id, event.source.value, event.external_id, event.sender,
                     event.title, event.content, event.received_at.isoformat(),
                     event.priority.value, int(event.requires_action),
                     json.dumps(event.metadata), event.created_at.isoformat(),
+                    int(consumed),
                 ),
             )
         return event, True
@@ -168,9 +174,66 @@ class DigestRepository:
         row = self.db.connection().execute(
             "SELECT * FROM digests ORDER BY created_at DESC, rowid DESC LIMIT 1"
         ).fetchone()
-        if row is None:
-            return None
+        return self._to_dict(row) if row else None
+
+    def pending(self) -> list[dict]:
+        rows = self.db.connection().execute(
+            "SELECT * FROM digests WHERE delivered = 0 ORDER BY created_at ASC"
+        ).fetchall()
+        return [self._to_dict(r) for r in rows]
+
+    def ack(self, digest_id: str) -> bool:
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE digests SET delivered = 1 WHERE id = ? AND delivered = 0",
+                (digest_id,),
+            )
+        return cur.rowcount > 0
+
+    @staticmethod
+    def _to_dict(row) -> dict:
         return {
             "id": row["id"], "session_id": row["session_id"],
             "created_at": row["created_at"], **json.loads(row["body"]),
         }
+
+
+class NotificationRepository:
+    """Urgent break-through notifications waiting for a connector to push them."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def add(self, event_id: str) -> str:
+        notification_id = uuid4().hex
+        conn = self.db.connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO notifications (id, event_id, created_at) VALUES (?, ?, ?)",
+                (notification_id, event_id, _now()),
+            )
+        return notification_id
+
+    def pending(self) -> list[dict]:
+        rows = self.db.connection().execute(
+            "SELECT n.id AS notification_id, e.* FROM notifications n"
+            " JOIN events e ON e.id = n.event_id"
+            " WHERE n.delivered = 0 ORDER BY n.created_at ASC"
+        ).fetchall()
+        return [
+            {
+                "id": r["notification_id"],
+                "event": EventRepository._to_event(r).model_dump(mode="json"),
+            }
+            for r in rows
+        ]
+
+    def ack(self, notification_id: str) -> bool:
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE notifications SET delivered = 1 WHERE id = ? AND delivered = 0",
+                (notification_id,),
+            )
+        return cur.rowcount > 0
