@@ -52,9 +52,11 @@ def test_connections_reports_truth(client, monkeypatch):
     assert "Version" in body["settings"]
 
 
-def test_digest_history_lists_recent(client):
+def test_digest_history_lists_recent_with_rendered_text(client):
     client.post("/status", json={"state": "gaming", "application": "g.exe"})
     client.post("/status", json={"state": "available"})
     history = client.get("/digests").json()
     assert len(history) == 1
     assert history[0]["session_id"]
+    # Jules' live find: cards rendered empty because text was never included.
+    assert "Gaming session complete" in history[0]["text"]

@@ -18,6 +18,7 @@ from app import __version__
 from app.config import get_settings
 from app.deps import get_digest_repo
 from app.security import COOKIE_NAME, require_api_token
+from app.services.digest_service import render_text
 from app.services.repositories import DigestRepository
 
 router = APIRouter()
@@ -61,7 +62,10 @@ def dashboard(
 def digest_history(
     repo: Annotated[DigestRepository, Depends(get_digest_repo)], limit: int = 10
 ) -> list[dict]:
-    return repo.recent(min(max(limit, 1), 50))
+    digests = repo.recent(min(max(limit, 1), 50))
+    for digest in digests:
+        digest["text"] = render_text(digest)
+    return digests
 
 
 @router.get("/connections", dependencies=[Depends(require_api_token)])

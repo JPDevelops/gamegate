@@ -8,10 +8,17 @@
   :root { --bg:#0f1014; --panel:#17181f; --panel2:#1e2029; --line:#2a2d3a;
           --text:#e8e9ee; --muted:#9a9db0; --accent:#7c3aed; --accent2:#a78bfa;
           --green:#3ba55d; --red:#d83c3e; --amber:#d8a03c; }
-  * { margin:0; padding:0; box-sizing:border-box; }
+  * { margin:0; padding:0; box-sizing:border-box; scrollbar-width:none; }
+  *::-webkit-scrollbar { width:0; height:0; }
   body { background:var(--bg); color:var(--text); font:15px/1.5 "Segoe UI",system-ui,sans-serif; }
   header { display:flex; align-items:center; gap:12px; padding:16px 22px;
            border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
+  .drag-zone { display:flex; align-items:center; gap:12px; flex:1; min-width:0; }
+  #win-controls { display:none; gap:4px; }
+  #win-controls button { background:none; border:none; color:var(--muted); font-size:15px;
+                         width:34px; height:30px; border-radius:7px; cursor:pointer; }
+  #win-controls button:hover { background:var(--panel2); color:var(--text); }
+  #win-controls .close:hover { background:var(--red); color:#fff; }
   .logo { width:26px; height:26px; border-radius:7px; background:var(--panel2);
           display:grid; place-items:center; }
   .logo::after { content:""; width:12px; height:12px; border-radius:50%;
@@ -50,8 +57,14 @@
 </head>
 <body>
 <header>
-  <div class="logo"></div><h1>GAMEGATE</h1>
-  <div id="state-pill">…</div>
+  <div class="drag-zone pywebview-drag-region">
+    <div class="logo"></div><h1>GAMEGATE</h1>
+    <div id="state-pill" style="margin-left:auto">…</div>
+  </div>
+  <div id="win-controls">
+    <button title="Minimize" onclick="pywebview.api.minimize()">—</button>
+    <button class="close" title="Close" onclick="pywebview.api.close()">✕</button>
+  </div>
 </header>
 <nav>
   <button data-tab="inbox" class="active">Inbox</button>
@@ -131,6 +144,10 @@ async function load() {
 }
 load();
 setInterval(load, 15000);
+// Inside the desktop window (frameless), show our own window controls.
+window.addEventListener("pywebviewready", () => {
+  document.querySelector("#win-controls").style.display = "flex";
+});
 </script>
 </body>
 </html>

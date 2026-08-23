@@ -178,17 +178,34 @@ def open_window() -> None:
         subprocess.Popen([sys.executable, __file__, "--window"])
 
 
+class WindowApi:
+    """Bridge for the in-page window controls (frameless = we own the chrome)."""
+
+    def __init__(self) -> None:
+        self.window = None
+
+    def minimize(self) -> None:
+        if self.window:
+            self.window.minimize()
+
+    def close(self) -> None:
+        if self.window:
+            self.window.destroy()
+
+
 def run_window() -> None:
-    """The desktop window itself: a native window (Edge WebView2) rendering
-    the dashboard — the Discord/Slack/Spotify architecture, approved by Jules
-    2026-08-23."""
+    """The desktop window: frameless native window (Edge WebView2) rendering
+    the dashboard with its own dark chrome — no white trim (Jules' fix #1)."""
     import webview
 
     config = load_config()
-    webview.create_window(
+    api = WindowApi()
+    window = webview.create_window(
         "GameGate", build_window_url(config),
         width=1080, height=760, background_color="#0f1014",
+        frameless=True, easy_drag=False, js_api=api,
     )
+    api.window = window
     webview.start()
 
 
