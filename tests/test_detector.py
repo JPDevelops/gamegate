@@ -129,3 +129,22 @@ def test_steam_registry_transition():
     state["steam"] = 553850
     detector.poll_once()
     assert api.calls[-1] == ("gaming", "steam-app-553850")
+
+
+def test_wallpaper_engine_is_not_a_game():
+    """Real false positive from Jules' PC (2026-08-23): Wallpaper Engine
+    lives in steamapps\\common and runs constantly."""
+    processes = {
+        **DESKTOP,
+        "wallpaper64.exe": r"c:\program files (x86)\steam\steamapps\common\wallpaper_engine\wallpaper64.exe",
+    }
+    assert detect_game(processes, [], True, no_steam) is None
+
+
+def test_config_ignore_list_extends_builtins():
+    processes = {
+        **DESKTOP,
+        "notagame.exe": r"c:\program files (x86)\steam\steamapps\common\tool\notagame.exe",
+    }
+    assert detect_game(processes, [], True, no_steam) == "notagame.exe"
+    assert detect_game(processes, [], True, no_steam, ["notagame.exe"]) is None
