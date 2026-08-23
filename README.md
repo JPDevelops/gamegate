@@ -22,7 +22,7 @@ Every external message becomes one internal **Event** `(source, external_id, sen
 
 - **Python 3.12**, **FastAPI + Uvicorn** — API layer
 - **SQLite** — persistence behind a repository layer
-- **Pytest + httpx** — 74+ tests, all offline (fakes/mocks for every external service)
+- **Pytest + httpx** — 100+ tests, all offline (fakes/mocks for every external service)
 - **Ruff** — linting; **GitHub Actions** — CI on every push/PR
 - **Nginx + systemd** — production-style deployment (`nginx/`, `deploy/`)
 

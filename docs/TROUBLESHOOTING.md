@@ -24,3 +24,25 @@ State the failure as "expected X, observed Y", find the layer, test the layer un
 - Detector: stdout (add `> detector.log 2>&1` or Task Scheduler logging)
 
 Logs never contain secrets or full message bodies — grep for `state transition`, `session`, `fell back`, `unreachable` as anchors.
+
+
+## Field-verified issues (found and fixed during live testing, 2026-08-23)
+
+These five really happened on the first live night — kept here because they're the
+most likely drill questions:
+
+1. **Ctrl+C didn't stop the tray app** → pystray swallows SIGINT. Fixed: signal
+   handler + tray Quit. If an old build lingers: Task Manager → end Python/GameGate.
+2. **"Quit" seemed to do nothing** → multiple app instances + Windows ghost tray
+   icons. Fixed: single-instance lock (second launch exits with "already running").
+   Ghost icons vanish when you hover over them.
+3. **State stuck on GAMING with no game running** → Wallpaper Engine lives in
+   steamapps/common and runs 24/7; path-based detection flagged it. Fixed: helper
+   exclusion list + `ignore_processes` in config.json. Diagnose with: `SELECT
+   application FROM sessions ORDER BY started_at DESC LIMIT 1`.
+4. **Pinged by your own messages** → the Discord connector ingested the owner's
+   messages; urgent keywords broke through. Fixed: `GAMEGATE_OWNER_DISCORD_ID`
+   skip.
+5. **Overlay text clipped / countdown bar through the text** → DPI-aware fonts
+   scale with Windows display scaling but layout was raw pixels. Fixed: one DPI
+   factor drives all metrics and font sizes.
