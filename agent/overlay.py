@@ -197,10 +197,19 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
             text_x, title_y, text=title, anchor="nw", fill=FG_TITLE,
             font=title_font, width=text_width,
         )
-        canvas.create_text(
+        body_item = canvas.create_text(
             text_x, title_y + title_h + px(6), text=body, anchor="nw", fill=FG_BODY,
             font=body_font, width=text_width,
         )
+        # Cap case (live find): when even the max-height card can't fit the
+        # text, truncate with an ellipsis ABOVE the countdown lane — text and
+        # bar must never collide. Full content always lives in the digest.
+        lane_top = height - px(26)
+        shown_text = body
+        while shown_text and canvas.bbox(body_item)[3] > lane_top:
+            cut = max(10, len(shown_text) // 10)
+            shown_text = shown_text[: len(shown_text) - cut].rstrip()
+            canvas.itemconfigure(body_item, text=shown_text + " …")
 
         # Countdown line along the bottom — shrinks as time runs out.
         track_x1, track_x2 = text_x, width - px(20)
