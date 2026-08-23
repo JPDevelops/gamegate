@@ -18,6 +18,8 @@ import json
 import logging
 import signal
 import socket
+import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -159,6 +161,37 @@ def windows_toast(title: str, body: str) -> bool:
         return False
 
 
+def build_window_url(config: dict) -> str:
+    """Dashboard URL for the desktop window; the key logs the webview in
+    once, after which the HttpOnly cookie takes over."""
+    base = config["api_url"].rstrip("/")
+    token = config.get("api_token", "")
+    return f"{base}/app?key={token}" if token else f"{base}/app"
+
+
+def open_window() -> None:
+    """Launch the GameGate window as a separate process, so closing it never
+    touches the tray/detector and the tray's single-instance lock stays clean."""
+    if getattr(sys, "frozen", False):
+        subprocess.Popen([sys.executable, "--window"])
+    else:
+        subprocess.Popen([sys.executable, __file__, "--window"])
+
+
+def run_window() -> None:
+    """The desktop window itself: a native window (Edge WebView2) rendering
+    the dashboard — the Discord/Slack/Spotify architecture, approved by Jules
+    2026-08-23."""
+    import webview
+
+    config = load_config()
+    webview.create_window(
+        "GameGate", build_window_url(config),
+        width=1080, height=760, background_color="#0f1014",
+    )
+    webview.start()
+
+
 def pick_notifier(config: dict):
     """Jules' spec: overlay (top-right box + sound) is the default; native
     toasts remain available via config {"notifier": "toast"} — note Focus
@@ -222,9 +255,13 @@ def run_tray() -> None:
         stop.set()
         icon.stop()
 
+    def on_open(icon, _item):
+        open_window()
+
     icon = pystray.Icon(
         "GameGate", icons["available"], "GameGate",
         menu=pystray.Menu(
+            pystray.MenuItem("Open GameGate", on_open, default=True),
             pystray.MenuItem("Status", on_status),
             pystray.MenuItem("Last digest", on_digest),
             pystray.MenuItem("Do Not Disturb", on_dnd),
@@ -246,6 +283,9 @@ def run_tray() -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     enable_dpi_awareness()
+    if "--window" in sys.argv:
+        run_window()  # window process: no tray, no lock — the tray owns those
+        raise SystemExit(0)
     _lock = acquire_single_instance_lock()
     if _lock is None:
         log.error("GameGate is already running — exiting.")
