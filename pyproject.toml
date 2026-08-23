@@ -12,6 +12,8 @@ dependencies = [
 [project.optional-dependencies]
 discord = ["discord.py>=2.7"]
 agent = ["psutil>=5.9"]
+gmail = ["google-api-python-client>=2.100", "google-auth-oauthlib>=1.1"]
+slack = ["slack-sdk>=3.27"]
 
 [dependency-groups]
 dev = [
