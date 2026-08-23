@@ -309,6 +309,22 @@ def launch_updater() -> bool:
     return True
 
 
+def _window_chrome(window) -> None:
+    """Dark caption paint + Discord-style contextual title: the native bar's
+    text follows the page (document.title), so the bar reads 'where you are'."""
+    import time
+
+    _darken_titlebar(window)
+    while True:
+        try:
+            title = window.evaluate_js("document.title")
+            if title and window.title != title:
+                window.set_title(title)
+        except Exception:  # noqa: BLE001 — window closed or JS not ready
+            return
+        time.sleep(1.5)
+
+
 def run_window() -> None:
     """The desktop window: NATIVE frame (snap/maximize/Win+arrow all work)
     with the title bar painted in app colors — Edge WebView2 inside."""
@@ -319,7 +335,7 @@ def run_window() -> None:
         "GameGate", build_window_url(config),
         width=1080, height=760, background_color="#0f1014",
     )
-    webview.start(_darken_titlebar, window)
+    webview.start(_window_chrome, window)
 
 
 def pick_notifier(config: dict):

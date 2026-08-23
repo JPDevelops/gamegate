@@ -522,9 +522,17 @@ function route() {
   const hash = location.hash || "#/recaps";
   const [, name, arg] = hash.split("/");
   const def = NAVDEF.find(n => n.route === (name === "recap" ? "recaps" : name)) || NAVDEF[0];
-  document.querySelector("#page-title").innerHTML = name === "recap"
-    ? `<span class="crumb">Game Recaps /</span> Recap`
-    : def.title;
+  if (name === "recap") {
+    const d = cache.recaps.find(x => x.id === arg);
+    const game = d && d.session ? (d.session.application || "Recap") : "Recap";
+    document.querySelector("#page-title").innerHTML =
+      `<a href="#/recaps" class="back" style="margin:0 6px 0 0">${I.back}</a>` +
+      `<span class="crumb">Game Recaps /</span> ${esc(game)}`;
+    document.title = game + " · GameGate";
+  } else {
+    document.querySelector("#page-title").innerHTML = def.title;
+    document.title = def.title + " · GameGate";
+  }
   renderNav();
   view.innerHTML = (views[name] || views.recaps)(arg);
 }
