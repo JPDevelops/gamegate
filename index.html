@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GameGate — game now, catch up after</title>
+<style>
+  :root {
+    --bg: #0f1014; --panel: #17181f; --panel2: #1e2029; --line: #2a2d3a;
+    --text: #e8e9ee; --muted: #9a9db0; --accent: #7c3aed; --accent2: #a78bfa;
+    --green: #3ba55d; --amber: #d8a03c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.6 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 96px 0 64px; text-align: center; background: radial-gradient(ellipse at top, #1c1440 0%, var(--bg) 65%); }
+  .logo { font-size: 15px; letter-spacing: .35em; color: var(--accent2); text-transform: uppercase; }
+  h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.1; margin: 18px 0 14px; }
+  h1 em { font-style: normal; color: var(--accent2); }
+  .sub { color: var(--muted); max-width: 620px; margin: 0 auto 34px; font-size: 19px; }
+  .btn { display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
+         padding: 14px 30px; border-radius: 10px; font-weight: 600; margin: 6px; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 26px; margin-bottom: 28px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .card h3 { font-size: 17px; margin-bottom: 8px; }
+  .card p { color: var(--muted); font-size: 15px; }
+  .step { color: var(--accent2); font-weight: 700; font-size: 13px; letter-spacing: .1em; }
+  /* overlay mock */
+  .mock { position: relative; background: linear-gradient(135deg, #232741, #101321); border: 1px solid var(--line);
+          border-radius: 14px; height: 300px; overflow: hidden; }
+  .mock .hud { position: absolute; bottom: 14px; left: 16px; color: #ffffff33; font-size: 13px; }
+  .toastbox { position: absolute; top: 16px; right: 16px; width: 62%; max-width: 340px;
+              background: #1e1f22ee; border-radius: 10px; display: flex; box-shadow: 0 12px 30px #0008; }
+  .toastbox .bar { width: 6px; background: var(--accent); border-radius: 10px 0 0 10px; }
+  .toastbox .body { padding: 12px 14px; }
+  .toastbox .t { font-weight: 700; font-size: 14px; }
+  .toastbox .b { color: #c8c9cf; font-size: 13px; }
+  pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+        padding: 16px; overflow-x: auto; font-size: 13.5px; color: #cdd0dd; }
+  .pill { display: inline-block; border: 1px solid var(--line); border-radius: 99px;
+          padding: 3px 12px; font-size: 13px; color: var(--muted); margin: 3px; }
+  footer { padding: 44px 0 64px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; text-align: center; }
+  a { color: var(--accent2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">GameGate</div>
+    <h1>Game now.<br><em>Catch up after.</em></h1>
+    <p class="sub">GameGate notices when you're playing, quietly holds your Gmail, Slack, and Discord noise, lets true emergencies through — and hands you one clean digest when you're done.</p>
+    <a class="btn" href="https://github.com/JPDevelops/gamegate/releases/latest">⬇ Download for Windows</a>
+    <a class="btn ghost" href="https://github.com/JPDevelops/gamegate">View source on GitHub</a>
+    <p class="note">Free & open source · MIT license · unsigned build — Windows SmartScreen will ask once (More info → Run anyway)</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>What it looks like</h2>
+    <div class="mock">
+      <div class="toastbox"><div class="bar"></div><div class="body">
+        <div class="t">Urgent — GMAIL</div>
+        <div class="b">boss@work.com: Customer reports delayed order</div>
+      </div></div>
+      <div class="hud">▲ your game keeps running — the overlay never steals focus</div>
+    </div>
+    <p class="note">Urgent messages surface as a top-right overlay with a sound. Everything else waits silently for your post-game digest.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it works</h2>
+    <div class="grid">
+      <div class="card"><div class="step">01 · DETECT</div><h3>Knows when you're gaming</h3>
+        <p>A tiny agent watches your processes and recognizes games automatically — Steam, Epic, GOG, Riot, Xbox — no configuration needed.</p></div>
+      <div class="card"><div class="step">02 · HOLD</div><h3>Holds the noise</h3>
+        <p>Incoming Gmail, Slack, and Discord messages are captured, prioritized by deterministic rules (optionally AI-assisted), and queued — not delivered.</p></div>
+      <div class="card"><div class="step">03 · BREAK THROUGH</div><h3>Emergencies still reach you</h3>
+        <p>Anything truly urgent pops a small overlay over your game — visible, audible, never focus-stealing.</p></div>
+      <div class="card"><div class="step">04 · DIGEST</div><h3>One clean catch-up</h3>
+        <p>Quit the game and get a single summary: session length, what needs action, what can wait. Exactly once, never duplicated.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Built like a real service</h2>
+    <div class="grid">
+      <div class="card"><h3>Engineering</h3><p>FastAPI · SQLite behind a repository layer · idempotent ingestion · pure-function routing engine · 95 offline tests · CI on every commit.</p></div>
+      <div class="card"><h3>Resilient by design</h3><p>Server down? The agent retries. Notifier closed? Messages queue. AI provider dead? Deterministic rules take over. Nothing is lost, nothing duplicates.</p></div>
+      <div class="card"><h3>Private by default</h3><p>Self-hosted — your messages live in one SQLite file on your own server. Read-only Gmail scope. Token-authenticated API. No third party sees anything.</p></div>
+    </div>
+    <p style="margin-top:18px">
+      <span class="pill">Python 3.12</span><span class="pill">FastAPI</span><span class="pill">SQLite</span>
+      <span class="pill">Nginx</span><span class="pill">Pytest + GitHub Actions</span><span class="pill">Discord · Gmail · Slack</span>
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Get running (bring your own server)</h2>
+    <p style="color:var(--muted); margin-bottom:16px">GameGate is self-hosted: the Windows app talks to <strong>your</strong> GameGate server — a Raspberry Pi, an old laptop, or any small Linux VM works. Two pieces, ~10 minutes:</p>
+    <pre># 1 · Server (any Linux box)
+git clone https://github.com/JPDevelops/gamegate.git && cd gamegate
+python3 -m venv .venv && source .venv/bin/activate && pip install -e .
+cp .env.example .env   # set GAMEGATE_API_TOKEN
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# 2 · Windows PC
+#    Download GameGate.exe, put config.json next to it
+#    (server address + the same token), double-click.</pre>
+    <p class="note">Full deployment guide (systemd, Nginx, integrations): <a href="https://github.com/JPDevelops/gamegate/tree/main/docs">the docs</a>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Built by <a href="https://github.com/JPDevelops">JPDevelops</a> · MIT License ·
+    <a href="https://github.com/JPDevelops/gamegate/issues">Report an issue</a>
+  </div>
+</footer>
+
+</body>
+</html>
