@@ -89,6 +89,16 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Uvicorn manually → systemd servi
 
 All data endpoints (reads included — they carry message content) are token-authenticated; only /health is open. Gmail access is read-only; only safe snippets are stored, never full bodies. The AI classifier receives sender/title/snippet only. Data lives in one SQLite file you can delete at any time. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for operational notes.
 
+## Engineering decisions
+
+Five choices that shaped the system, and their tradeoffs:
+
+1. **One internal Event model; per-service adapters at the edge.** Gmail, Slack, and Discord payloads never reach core logic — each connector translates at the boundary. Cost: an adapter per service. Payoff: routing/digest/storage have exactly one code path, and adding a source touches nothing else.
+2. **Idempotency as a schema guarantee, not a convention.** `(source, external_id)` uniqueness makes redeliveries free (replays return the original, 200 vs 201), and delivery acks are once-only after a successful send. External services redeliver constantly — the design assumes it instead of fighting it.
+3. **A custom overlay instead of native Windows toasts.** Focus Assist silences toasts during fullscreen gaming — precisely when an urgent break-through matters. The custom always-on-top card is immune, never steals focus, and sizes itself to measured text. Tradeoff: we own the rendering (and found the DPI bugs that come with that).
+4. **The LLM is a guest, never a dependency.** The classifier sits behind an interface, its output is schema-validated like any untrusted API, and every failure path lands on deterministic rules. The product works with AI unplugged; tests never make a paid call.
+5. **Freshness gates interruptions.** An event received long before ingestion is history, not an interruption — it queues for the digest regardless of priority. Learned live: the first Gmail sync tried to pop 31 overlay cards for old mail.
+
 ## Documentation
 
 [ARCHITECTURE.md](ARCHITECTURE.md) · [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) · [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md) · [docs/SLACK_SETUP.md](docs/SLACK_SETUP.md) · [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) · [docs/DEMO.md](docs/DEMO.md)
