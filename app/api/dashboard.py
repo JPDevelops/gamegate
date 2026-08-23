@@ -15,6 +15,7 @@ from fastapi import APIRouter, Cookie, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import __version__
+from app.api.connectors import service_active
 from app.config import get_settings
 from app.deps import get_digest_repo
 from app.security import COOKIE_NAME, require_api_token
@@ -75,8 +76,13 @@ def connections() -> dict:
     gmail_client = bool(os.environ.get("GMAIL_OAUTH_CLIENT_ID"))
     gmail_enabled = os.environ.get("GMAIL_ENABLED", "").lower() == "true"
 
-    if gmail_enabled and gmail_token.exists():
-        gmail = {"state": "connected", "detail": "Read-only access, polling your inbox"}
+    gmail_running = service_active("gmail")
+    if gmail_enabled and gmail_token.exists() and gmail_running is not False:
+        gmail = {"state": "connected", "detail": "Read-only access, polling your inbox",
+                 "can_disconnect": True}
+    elif gmail_token.exists() and gmail_client:
+        gmail = {"state": "disconnected", "detail": "Authorized but paused",
+                 "can_connect": True}
     elif gmail_client:
         gmail = {
             "state": "needs setup",
@@ -89,11 +95,15 @@ def connections() -> dict:
     discord_ready = bool(os.environ.get("DISCORD_BOT_TOKEN")) and bool(
         int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0"))
     )
-    discord = (
-        {"state": "connected", "detail": "Bot in your server, ingesting messages"}
-        if discord_ready
-        else {"state": "needs setup", "detail": "Bot token or server id missing"}
-    )
+    discord_running = service_active("discord")
+    if discord_ready and discord_running is not False:
+        discord = {"state": "connected", "detail": "Bot in your server, ingesting messages",
+                   "can_disconnect": True}
+    elif discord_ready:
+        discord = {"state": "disconnected", "detail": "Configured but paused",
+                   "can_connect": True}
+    else:
+        discord = {"state": "needs setup", "detail": "Bot token or server id missing"}
 
     slack = (
         {"state": "connected", "detail": "Socket Mode"}
@@ -102,9 +112,11 @@ def connections() -> dict:
     )
 
     classifier = (
-        {"state": "connected", "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-5-mini')} — deterministic fallback always on"}
+        {"state": "connected", "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-5-mini')} — deterministic fallback always on",
+         "can_disconnect": True}
         if os.environ.get("CLASSIFIER_ENABLED", "").lower() == "true"
-        else {"state": "disabled", "detail": "Deterministic rules only"}
+        else {"state": "disconnected", "detail": "Deterministic rules only",
+              "can_connect": True}
     )
 
     return {
@@ -112,6 +124,12 @@ def connections() -> dict:
         "gmail": gmail,
         "slack": slack,
         "classifier": classifier,
+        "catalog": [
+            {"id": "discord", "name": "Discord", "desc": "Messages from your server"},
+            {"id": "gmail", "name": "Gmail", "desc": "Read-only inbox monitoring"},
+            {"id": "slack", "name": "Slack", "desc": "Coming in a later version"},
+            {"id": "classifier", "name": "AI classifier", "desc": "Smart prioritization (with fallback)"},
+        ],
         "settings": {
             "Version": __version__,
             "Environment": settings.env,
