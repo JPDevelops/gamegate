@@ -1,6 +1,7 @@
 {
   "api_url": "http://YOUR-SERVER:8000",
   "api_token": "SAME-VALUE-AS-GAMEGATE_API_TOKEN",
-  "game_processes": ["helldivers2.exe", "cs2.exe", "FortniteClient-Win64-Shipping.exe"],
+  "auto_detect": true,
+  "game_processes": [],
   "poll_interval_seconds": 5
 }
