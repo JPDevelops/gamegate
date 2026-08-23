@@ -1,7 +1,10 @@
+from app.config import get_settings
 from app.db import get_database
+from app.services.ingest_service import IngestService
 from app.services.repositories import (
     DigestRepository,
     EventRepository,
+    NotificationRepository,
     SessionRepository,
     StatusRepository,
 )
@@ -14,12 +17,21 @@ def get_event_repo() -> EventRepository:
 
 def get_status_service() -> StatusService:
     db = get_database()
-    return StatusService(StatusRepository(db), SessionRepository(db))
+    return StatusService(
+        StatusRepository(db),
+        SessionRepository(db),
+        EventRepository(db),
+        DigestRepository(db),
+    )
 
 
-def get_session_repo() -> SessionRepository:
-    return SessionRepository(get_database())
+def get_ingest_service() -> IngestService:
+    return IngestService(get_database(), get_settings())
 
 
 def get_digest_repo() -> DigestRepository:
     return DigestRepository(get_database())
+
+
+def get_notification_repo() -> NotificationRepository:
+    return NotificationRepository(get_database())

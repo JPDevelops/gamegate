@@ -45,7 +45,15 @@ CREATE TABLE IF NOT EXISTS digests (
     id TEXT PRIMARY KEY,
     session_id TEXT,
     created_at TEXT NOT NULL,
-    body TEXT NOT NULL
+    body TEXT NOT NULL,
+    delivered INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES events(id),
+    created_at TEXT NOT NULL,
+    delivered INTEGER NOT NULL DEFAULT 0
 );
 """
 
