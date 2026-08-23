@@ -53,18 +53,19 @@ def _ts_to_iso(event_ts: str) -> str:
         return datetime.now(UTC).isoformat()
 
 
-def handle_slack_event(payload: dict, api) -> bool:
-    """Process one Events API envelope body. Safe on junk: unknown shapes
-    are ignored, API failures are logged and absorbed (Slack will retry)."""
+def handle_slack_event(payload: dict, api) -> str:
+    """Process one Events API envelope body. Returns 'ingested', 'ignored'
+    (junk/uninteresting shapes), or 'failed' (ingestion error — the caller
+    must NOT ack so Slack redelivers; idempotency absorbs the replay)."""
     event = payload.get("event", {})
     normalized = normalize_mention(event)
     if normalized is None:
-        return False
+        return "ignored"
     try:
-        return api.post_event(normalized)
+        return "ingested" if api.post_event(normalized) else "failed"
     except Exception:
         log.exception("Slack event ingestion failed")
-        return False
+        return "failed"
 
 
 def run_socket_mode(api) -> None:
@@ -85,15 +86,16 @@ def run_socket_mode(api) -> None:
     )
 
     def _listener(sm_client: SocketModeClient, request: SocketModeRequest) -> None:
-        # Ack AFTER processing (Vega audit #1): if ingestion fails, the missing
-        # ack makes Slack redeliver, and (source, external_id) idempotency
-        # makes the redelivery safe. Ingestion is a local POST — fast enough
-        # to stay inside Slack's ack window.
+        # Ack policy (Vega round 2): ack when ingested or deliberately
+        # ignored; do NOT ack failures — the missing ack makes Slack
+        # redeliver, and (source, external_id) idempotency absorbs replays.
+        outcome = "ignored"
         if request.type == "events_api":
-            handle_slack_event(request.payload, api)
-        sm_client.send_socket_mode_response(
-            SocketModeResponse(envelope_id=request.envelope_id)
-        )
+            outcome = handle_slack_event(request.payload, api)
+        if outcome != "failed":
+            sm_client.send_socket_mode_response(
+                SocketModeResponse(envelope_id=request.envelope_id)
+            )
 
     client.socket_mode_request_listeners.append(_listener)
     client.connect()

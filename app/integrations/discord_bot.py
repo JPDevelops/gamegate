@@ -24,6 +24,13 @@ PUMP_INTERVAL_SECONDS = 15
 
 
 def build_client() -> discord.Client:
+    # Fail closed (Nebula round 2): without a configured guild and owner,
+    # the bot would trust every server it's in and answer anyone.
+    if not int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0")):
+        raise RuntimeError("GAMEGATE_DISCORD_GUILD_ID is required")
+    if not int(os.environ.get("GAMEGATE_OWNER_DISCORD_ID", "0")):
+        raise RuntimeError("GAMEGATE_OWNER_DISCORD_ID is required")
+
     intents = discord.Intents.default()
     intents.message_content = True
     client = discord.Client(intents=intents)
@@ -83,6 +90,9 @@ def build_client() -> discord.Client:
         ):
             return
         text = message.content.strip()
+        # Commands expose digest/status data — owner only (Nebula round 2).
+        if text in ("!status", "!digest") and message.author.id != owner_id:
+            return
         if text == "!status":
             await message.channel.send(
                 format_status_reply(api.get_status()), allowed_mentions=no_mentions

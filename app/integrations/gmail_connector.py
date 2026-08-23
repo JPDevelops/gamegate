@@ -98,14 +98,25 @@ def build_real_client() -> GmailClient:
 
     class RealGmailClient:
         def list_new_messages(self) -> list[dict]:
-            listing = (
-                service.users()
-                .messages()
-                .list(userId="me", q="is:unread newer_than:1d", maxResults=25)
-                .execute()
-            )
+            refs, page_token = [], None
+            # Paginate (Vega round 2): a backlog beyond one page must not
+            # starve older messages. Hard cap keeps a poll bounded.
+            while len(refs) < 200:
+                listing = (
+                    service.users()
+                    .messages()
+                    .list(
+                        userId="me", q="is:unread newer_than:1d",
+                        maxResults=100, pageToken=page_token,
+                    )
+                    .execute()
+                )
+                refs.extend(listing.get("messages", []))
+                page_token = listing.get("nextPageToken")
+                if not page_token:
+                    break
             results = []
-            for ref in listing.get("messages", []):
+            for ref in refs:
                 msg = (
                     service.users()
                     .messages()

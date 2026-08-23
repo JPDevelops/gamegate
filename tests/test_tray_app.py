@@ -68,6 +68,19 @@ def test_dnd_toggle_posts_focused_then_available():
     assert api.statuses == ["focused", "available"]
 
 
+def test_dnd_pauses_and_resyncs_detector():
+    class FakeDetector:
+        last_reported_state = "available"
+
+    api = FakeApi()
+    detector = FakeDetector()
+    dnd = DndController(api, detector)
+    assert dnd.toggle() is True          # DND on — detector loop will pause
+    assert detector.last_reported_state == "available"  # untouched while on
+    assert dnd.toggle() is False         # DND off
+    assert detector.last_reported_state is None  # forced re-sync next poll
+
+
 def test_dnd_stays_off_if_api_down():
     class DownApi(FakeApi):
         def post_status(self, *args):

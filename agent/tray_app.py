@@ -118,16 +118,25 @@ class ToastPump:
 
 
 class DndController:
-    """Manual do-not-disturb: overrides state via the normal /status API."""
+    """Manual do-not-disturb: overrides state via the normal /status API.
 
-    def __init__(self, api: ApiClient) -> None:
+    While DND is active the detector must not fight the override (it would
+    re-post gaming/available on its next transition), so the tray pauses the
+    detector and re-syncs it on release."""
+
+    def __init__(self, api: ApiClient, detector=None) -> None:
         self.api = api
+        self.detector = detector
         self.active = False
 
     def toggle(self) -> bool:
         if self.active:
             if self.api.post_status("available", None, None):
                 self.active = False
+                if self.detector is not None:
+                    # Forget the last report so the next poll re-syncs the
+                    # true state (e.g. a game that started during DND).
+                    self.detector.last_reported_state = None
         else:
             if self.api.post_status("focused", None, None):
                 self.active = True
@@ -165,7 +174,7 @@ def run_tray() -> None:
     detector = Detector(config, psutil_process_lister, api)
     notify = pick_notifier(config)
     pump = ToastPump(api, notify)
-    dnd = DndController(api)
+    dnd = DndController(api, detector)
     stop = threading.Event()
 
     icons = {state: render_badge(state) for state in ("available", "gaming", "focused")}
@@ -173,7 +182,8 @@ def run_tray() -> None:
     def detector_loop():
         while not stop.is_set():
             try:
-                detector.poll_once()
+                if not dnd.active:  # paused during manual do-not-disturb
+                    detector.poll_once()
             except Exception:
                 log.exception("Detector poll failed")
             stop.wait(config["poll_interval_seconds"])
