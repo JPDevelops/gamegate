@@ -16,6 +16,7 @@ stays unit-testable on any OS.
 """
 import json
 import logging
+import os
 import signal
 import socket
 import subprocess
@@ -301,9 +302,16 @@ def launch_updater() -> bool:
     if not script.exists():
         log.error("Updater script not found at %s", script)
         return False
+    # Absolute path: on Jules' machine the bare word 'powershell' resolves
+    # through a broken app association — the spawned console died instantly.
+    powershell = (
+        Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    )
+    launcher = str(powershell) if powershell.exists() else "powershell.exe"
     creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
     subprocess.Popen(
-        ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        [launcher, "-ExecutionPolicy", "Bypass", "-File", str(script)],
         creationflags=creationflags,
     )
     return True
