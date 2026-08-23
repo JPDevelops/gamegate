@@ -221,3 +221,8 @@ agent/config.json
 # OAuth credentials (Gmail) — NEVER commit
 token.json
 credentials.json
+
+# Local databases — private message content, never commit
+gamegate.db
+*.db-wal
+*.db-shm

@@ -36,8 +36,8 @@ def test_normalize_mention_shape():
 
 def test_non_mention_events_are_ignored():
     assert normalize_mention({"type": "message", "text": "hi"}) is None
-    assert handle_slack_event({"event": {"type": "reaction_added"}}, api=None) is False
-    assert handle_slack_event({}, api=None) is False
+    assert handle_slack_event({"event": {"type": "reaction_added"}}, api=None) == "ignored"
+    assert handle_slack_event({}, api=None) == "ignored"
 
 
 class FakeApi:
@@ -51,8 +51,17 @@ class FakeApi:
 
 def test_handle_event_posts_normalized_payload():
     api = FakeApi()
-    assert handle_slack_event(mention_payload(), api) is True
+    assert handle_slack_event(mention_payload(), api) == "ingested"
     assert api.posted[0]["source"] == "slack"
+
+
+class DownApi:
+    def post_event(self, payload):
+        return False
+
+
+def test_failed_ingestion_reports_failed_so_slack_redelivers():
+    assert handle_slack_event(mention_payload(), DownApi()) == "failed"
 
 
 def test_slack_retry_is_idempotent_end_to_end(client):
