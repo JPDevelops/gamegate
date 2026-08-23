@@ -21,19 +21,20 @@ class EventRepository:
         (source, external_id): a duplicate returns the original, untouched.
         Events that are delivered immediately or suppressed are marked consumed
         (delivered=1) so they never reappear in a digest."""
-        existing = self.find_by_external_id(incoming.source.value, incoming.external_id)
-        if existing is not None:
-            return existing, False
         event = Event(**incoming.model_dump())
         if decision is not None:
             event.metadata["routing"] = decision
         consumed = decision in ("deliver_now", "suppress")
         conn = self.db.connection()
+        # ON CONFLICT DO NOTHING makes concurrent duplicate posts race-safe:
+        # whoever loses the race gets rowcount 0 and returns the stored
+        # original instead of a 500 (Vega audit #3).
         with conn:
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT INTO events (id, source, external_id, sender, title, content,"
                 " received_at, priority, requires_action, metadata, created_at, delivered)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(source, external_id) DO NOTHING",
                 (
                     event.id, event.source.value, event.external_id, event.sender,
                     event.title, event.content, event.received_at.isoformat(),
@@ -42,6 +43,11 @@ class EventRepository:
                     int(consumed),
                 ),
             )
+        if cursor.rowcount == 0:
+            existing = self.find_by_external_id(
+                incoming.source.value, incoming.external_id
+            )
+            return existing, False
         return event, True
 
     def find_by_external_id(self, source: str, external_id: str) -> Event | None:

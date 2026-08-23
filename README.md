@@ -55,7 +55,7 @@ All configuration is environment variables — see [`.env.example`](.env.example
 
 | Variable | Purpose |
 |----------|---------|
-| `GAMEGATE_API_TOKEN` | Shared secret; write endpoints require it as `X-GameGate-Token` |
+| `GAMEGATE_API_TOKEN` | Shared secret; all data endpoints require it as `X-GameGate-Token` (mandatory in production) |
 | `GAMEGATE_DB_PATH` | SQLite file location |
 | `GAMEGATE_URGENT_BREAKTHROUGH` | Do urgent events interrupt gaming? (`true`/`false`) |
 | `DISCORD_BOT_TOKEN`, `GAMEGATE_DISCORD_CHANNEL_ID` | Discord connector |
@@ -87,7 +87,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Uvicorn manually → systemd servi
 
 ## Security & privacy
 
-Write endpoints are token-authenticated. Gmail access is read-only; only safe snippets are stored, never full bodies. The AI classifier receives sender/title/snippet only. Data lives in one SQLite file you can delete at any time. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for operational notes.
+All data endpoints (reads included — they carry message content) are token-authenticated; only /health is open. Gmail access is read-only; only safe snippets are stored, never full bodies. The AI classifier receives sender/title/snippet only. Data lives in one SQLite file you can delete at any time. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for operational notes.
 
 ## Documentation
 

@@ -85,12 +85,15 @@ def run_socket_mode(api) -> None:
     )
 
     def _listener(sm_client: SocketModeClient, request: SocketModeRequest) -> None:
-        # Ack immediately: Slack treats slow acks as failures and re-sends.
+        # Ack AFTER processing (Vega audit #1): if ingestion fails, the missing
+        # ack makes Slack redeliver, and (source, external_id) idempotency
+        # makes the redelivery safe. Ingestion is a local POST — fast enough
+        # to stay inside Slack's ack window.
+        if request.type == "events_api":
+            handle_slack_event(request.payload, api)
         sm_client.send_socket_mode_response(
             SocketModeResponse(envelope_id=request.envelope_id)
         )
-        if request.type == "events_api":
-            handle_slack_event(request.payload, api)
 
     client.socket_mode_request_listeners.append(_listener)
     client.connect()

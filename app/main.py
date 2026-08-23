@@ -14,8 +14,14 @@ from app.config import get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+    # Fail closed (Nebula audit #3): production must never run unauthenticated.
+    if settings.env == "production" and not settings.api_token:
+        raise RuntimeError(
+            "GAMEGATE_API_TOKEN is required when GAMEGATE_ENV=production"
+        )
     if db_module._database is None:
-        db_module.init_database(get_settings().db_path)
+        db_module.init_database(settings.db_path)
     yield
 
 
