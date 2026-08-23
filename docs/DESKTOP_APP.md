@@ -22,7 +22,7 @@ Right-click → Status / Last digest / Do Not Disturb / Quit.
 ```powershell
 pip install pyinstaller
 cd agent
-pyinstaller --onefile --noconsole --name GameGate tray_app.py
+python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py
 # → dist\GameGate.exe
 ```
 
