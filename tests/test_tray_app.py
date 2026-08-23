@@ -140,3 +140,16 @@ def test_pump_applies_settings_only_on_version_change():
     # same version -> values stay applied, no churn
     pump.run_once()
     assert pump._settings_version == 5
+
+
+def test_update_script_path_source_and_frozen(monkeypatch):
+    import tray_app
+
+    source_path = tray_app.update_script_path()
+    assert source_path.name == "update.ps1"
+    assert source_path.parent.name == "agent"
+
+    monkeypatch.setattr(tray_app.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(tray_app.sys, "executable", "/x/gamegate/agent/dist/GameGate.exe")
+    frozen_path = tray_app.update_script_path()
+    assert frozen_path.as_posix().endswith("agent/update.ps1")

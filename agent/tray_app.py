@@ -23,6 +23,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from branding import render_badge
 from detector import ApiClient, Detector, load_config, psutil_process_lister
@@ -218,6 +219,29 @@ def _darken_titlebar(window) -> None:
         log.debug("Dark titlebar not applied (pre-Win10 or non-Windows)")
 
 
+def update_script_path() -> Path:
+    """agent/update.ps1, whether we're the frozen exe (agent/dist/GameGate.exe)
+    or running from source (agent/tray_app.py)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent.parent / "update.ps1"
+    return Path(__file__).parent / "update.ps1"
+
+
+def launch_updater() -> bool:
+    """Spawn the updater in its own console; caller must quit so the exe
+    unlocks. Returns False when the script is missing (e.g. moved exe)."""
+    script = update_script_path()
+    if not script.exists():
+        log.error("Updater script not found at %s", script)
+        return False
+    creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    subprocess.Popen(
+        ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        creationflags=creationflags,
+    )
+    return True
+
+
 def run_window() -> None:
     """The desktop window: NATIVE frame (snap/maximize/Win+arrow all work)
     with the title bar painted in app colors — Edge WebView2 inside."""
@@ -294,6 +318,18 @@ def run_tray() -> None:
             duration_s=pump.duration_s, sound=pump.sound,
         )
 
+    def on_update(icon, _item):
+        notify(
+            "GameGate", "Updating — the app will restart itself in about a minute.",
+            duration_s=pump.duration_s, sound=False,
+        )
+        if launch_updater():
+            stop.set()
+            icon.stop()  # quit so the exe unlocks for the rebuild
+        else:
+            notify("GameGate", "Updater script not found — update from the repo folder.",
+                   duration_s=pump.duration_s, sound=False)
+
     def on_quit(icon, _item):
         stop.set()
         icon.stop()
@@ -308,6 +344,7 @@ def run_tray() -> None:
             pystray.MenuItem("Status", on_status),
             pystray.MenuItem("Last digest", on_digest),
             pystray.MenuItem("Do Not Disturb", on_dnd),
+            pystray.MenuItem("Update GameGate", on_update),
             pystray.MenuItem("Quit", on_quit),
         ),
     )
