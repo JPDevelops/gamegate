@@ -1,15 +1,21 @@
 """GameGate gaming detector.
 
-Runs on the gaming PC. Watches for configured game processes and reports
-STATE TRANSITIONS ONLY to the GameGate API — never a POST per poll cycle.
+Runs on the gaming PC. Detects running games AUTOMATICALLY, three layers deep,
+and reports STATE TRANSITIONS ONLY to the GameGate API:
+
+1. Manual list — exact process names from config.json (always wins if set)
+2. Launcher paths — any process whose executable lives inside a known game
+   library folder (Steam, Epic, GOG, Riot, Xbox, Battle.net)
+3. Steam registry — HKCU\\Software\\Valve\\Steam\\RunningAppID, which Steam
+   sets to the running game's app id (0 when idle)
+
 Survives API downtime: a failed report is retried on the next cycle because
 last_reported_state only advances after a successful POST.
 
-Run:  python detector.py            (uses agent/config.json)
+Run:  python detector.py            (uses agent/config.json if present)
       python detector.py --once     (single poll, for debugging)
 
-Dependencies: psutil (pip install psutil). Stdlib otherwise, so the agent
-stays a single copy-paste-able file on Windows.
+Dependencies: psutil (pip install psutil). Stdlib otherwise.
 """
 import argparse
 import json
@@ -26,8 +32,27 @@ log = logging.getLogger("gamegate.detector")
 DEFAULT_CONFIG = {
     "api_url": "http://127.0.0.1:8000",
     "api_token": "",
-    "game_processes": ["helldivers2.exe"],
+    "game_processes": [],          # optional manual additions
+    "auto_detect": True,
     "poll_interval_seconds": 5,
+}
+
+# Path fragments that mark a process as "installed by a game launcher".
+LIBRARY_MARKERS = (
+    "\\steamapps\\common\\",
+    "/steamapps/common/",
+    "\\epic games\\",
+    "\\gog galaxy\\games\\",
+    "\\riot games\\",
+    "\\xboxgames\\",
+    "\\battle.net\\",
+)
+
+# Launcher/helper binaries that live in game folders but aren't the game.
+HELPER_PROCESSES = {
+    "steam.exe", "steamwebhelper.exe", "epicgameslauncher.exe",
+    "epicwebhelper.exe", "crashpad_handler.exe", "gameoverlayui.exe",
+    "easyanticheat.exe", "battle.net.exe", "riotclientservices.exe",
 }
 
 
@@ -40,17 +65,59 @@ def load_config(path: str | None = None) -> dict:
     return config
 
 
-def psutil_process_lister() -> set[str]:
+def psutil_process_lister() -> dict[str, str]:
+    """Running processes as {name_lower: exe_path_lower}."""
     import psutil
 
-    names = set()
-    for proc in psutil.process_iter(["name"]):
+    processes: dict[str, str] = {}
+    for proc in psutil.process_iter(["name", "exe"]):
         try:
-            if proc.info["name"]:
-                names.add(proc.info["name"].lower())
+            name = (proc.info["name"] or "").lower()
+            if name:
+                processes[name] = (proc.info["exe"] or "").lower()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-    return names
+    return processes
+
+
+def windows_steam_running_app_id() -> int:
+    """Steam writes the current game's app id here; 0 when not playing."""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+            value, _ = winreg.QueryValueEx(key, "RunningAppID")
+            return int(value)
+    except OSError:
+        return 0
+
+
+def detect_game(
+    processes: dict[str, str],
+    manual_list: list[str],
+    auto_detect: bool = True,
+    steam_app_id_reader=windows_steam_running_app_id,
+) -> str | None:
+    """Return the detected game's label, or None. Layered:
+    manual list → launcher-folder paths → Steam registry."""
+    for name in manual_list:
+        if name in processes:
+            return name
+
+    if not auto_detect:
+        return None
+
+    for name, exe_path in processes.items():
+        if name in HELPER_PROCESSES:
+            continue
+        if any(marker in exe_path for marker in LIBRARY_MARKERS):
+            return name
+
+    app_id = steam_app_id_reader()
+    if app_id:
+        return f"steam-app-{app_id}"
+
+    return None
 
 
 class ApiClient:
@@ -77,17 +144,27 @@ class ApiClient:
 
 
 class Detector:
-    def __init__(self, config: dict, process_lister, api_client) -> None:
+    def __init__(
+        self,
+        config: dict,
+        process_lister,
+        api_client,
+        steam_app_id_reader=windows_steam_running_app_id,
+    ) -> None:
         self.config = config
         self.process_lister = process_lister
         self.api = api_client
+        self.steam_app_id_reader = steam_app_id_reader
         self.last_reported_state: str | None = None
         self.game_started_at: str | None = None
 
     def poll_once(self) -> None:
-        running = self.process_lister()
-        active_game = next(
-            (p for p in self.config["game_processes"] if p in running), None
+        processes = self.process_lister()
+        active_game = detect_game(
+            processes,
+            self.config["game_processes"],
+            self.config.get("auto_detect", True),
+            self.steam_app_id_reader,
         )
         desired_state = "gaming" if active_game else "available"
 
@@ -108,8 +185,9 @@ class Detector:
 
     def run_forever(self) -> None:
         log.info(
-            "Detector watching %s every %ss",
-            self.config["game_processes"],
+            "Detector: auto_detect=%s, manual=%s, every %ss",
+            self.config.get("auto_detect", True),
+            self.config["game_processes"] or "(none)",
             self.config["poll_interval_seconds"],
         )
         while True:
