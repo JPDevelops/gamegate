@@ -1,0 +1,19 @@
+# systemd unit for the GameGate Discord connector.
+# Install: sudo cp deploy/gamegate-discord.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now gamegate-discord
+[Unit]
+Description=GameGate Discord connector
+After=network.target gamegate.service
+Wants=gamegate.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/gamegate
+EnvironmentFile=/home/ubuntu/gamegate/.env
+ExecStart=/home/ubuntu/gamegate/.venv/bin/python -m app.integrations.discord_bot
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

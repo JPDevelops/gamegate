@@ -1,0 +1,19 @@
+# systemd unit for the GameGate API.
+# Install: sudo cp deploy/gamegate.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now gamegate
+# Logs:    journalctl -u gamegate -f
+[Unit]
+Description=GameGate API (FastAPI/Uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/gamegate
+EnvironmentFile=/home/ubuntu/gamegate/.env
+ExecStart=/home/ubuntu/gamegate/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -3,6 +3,8 @@
 Entering GAMING opens a session; leaving GAMING closes it. The post-game
 digest hooks into the closed session (routing engine milestone).
 """
+import logging
+
 from app.models.status import AvailabilityState, StatusResponse, StatusUpdate
 from app.services.digest_service import build_digest
 from app.services.repositories import (
@@ -11,6 +13,8 @@ from app.services.repositories import (
     SessionRepository,
     StatusRepository,
 )
+
+log = logging.getLogger("gamegate.status")
 
 
 class StatusService:
@@ -43,14 +47,22 @@ class StatusService:
             and update.state != AvailabilityState.GAMING
         )
 
+        if previous.state != update.state:
+            log.info("State transition: %s -> %s", previous.state.value, update.state.value)
+
         closed_session = None
         if entering_game:
             self.session_repo.open(
                 update.application,
                 update.started_at.isoformat() if update.started_at else None,
             )
+            log.info("Gaming session opened (%s)", update.application)
         elif leaving_game:
             closed_session = self.session_repo.close_current()
+            if closed_session:
+                log.info(
+                    "Gaming session closed after %ss", closed_session["duration_seconds"]
+                )
             if closed_session and self.event_repo and self.digest_repo:
                 self._create_digest(closed_session)
         return result, closed_session
