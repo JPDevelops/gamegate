@@ -42,3 +42,36 @@ def test_list_respects_limit(client):
     for i in range(5):
         client.post("/events", json=make_event(external_id=str(i)))
     assert len(client.get("/events", params={"limit": 3}).json()) == 3
+
+
+def test_read_state_is_idempotent_and_reversible(client):
+    event = client.post("/events", json=make_event(external_id="r1")).json()
+    assert client.post(f"/events/{event['id']}/read").status_code == 200
+    assert client.post(f"/events/{event['id']}/read").status_code == 200  # idempotent
+    listed = client.get("/events").json()[0]
+    assert listed["read_at"] is not None
+    assert client.post(f"/events/{event['id']}/unread").status_code == 200
+    assert client.get("/events").json()[0]["read_at"] is None
+    assert client.post("/events/nope/read").status_code == 404
+
+
+def test_read_all_and_bulk_undo(client):
+    ids = [
+        client.post("/events", json=make_event(external_id=f"ra{i}")).json()["id"]
+        for i in range(3)
+    ]
+    marked = client.post("/events/read-all").json()["marked"]
+    assert sorted(marked) == sorted(ids)
+    assert all(e["read_at"] for e in client.get("/events").json())
+    undone = client.post("/events/unread", json={"ids": marked}).json()
+    assert undone == {"unmarked": 3}
+    assert all(e["read_at"] is None for e in client.get("/events").json())
+
+
+def test_read_state_never_affects_recaps(client):
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    event = client.post("/events", json=make_event(external_id="rr1", priority="actionable")).json()
+    client.post(f"/events/{event['id']}/read")  # read it mid-session
+    client.post("/status", json={"state": "available"})
+    recap = client.get("/digest/latest").json()
+    assert recap["total_events"] == 1  # read or not, it happened during the session

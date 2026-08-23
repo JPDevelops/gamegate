@@ -71,10 +71,14 @@ class Database:
         with self.connection() as conn:
             conn.executescript(SCHEMA)
             # Lightweight migration: columns added after first release.
-            try:
-                conn.execute("ALTER TABLE sessions ADD COLUMN app_id TEXT")
-            except sqlite3.OperationalError:
-                pass  # already present
+            for migration in (
+                "ALTER TABLE sessions ADD COLUMN app_id TEXT",
+                "ALTER TABLE events ADD COLUMN read_at TEXT",
+            ):
+                try:
+                    conn.execute(migration)
+                except sqlite3.OperationalError:
+                    pass  # already present
 
     def connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)

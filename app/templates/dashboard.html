@@ -73,6 +73,22 @@
   .stat span { font-size:12px; color:var(--muted); }
   .section-title { font-size:13px; letter-spacing:.14em; color:var(--muted);
                    text-transform:uppercase; margin:22px 0 10px; }
+  .section-title.urgent { color:var(--red); }
+  .section-title.action { color:var(--amber); }
+  .filter-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  .fchip { background:var(--panel); border:1px solid var(--line); border-radius:99px;
+           padding:5px 14px; font-size:13px; color:var(--muted); cursor:pointer; }
+  .fchip.on { color:var(--text); border-color:var(--accent); }
+  .fchip b { color:var(--accent2); }
+  .readbtn { background:none; border:1px solid var(--line); color:var(--muted);
+             border-radius:7px; padding:5px 12px; font:inherit; font-size:13px;
+             cursor:pointer; margin-left:auto; flex:none; }
+  .readbtn:hover { border-color:var(--green); color:var(--green); }
+  .card.isread { opacity:.5; }
+  .undo-pill { background:var(--panel2); border:1px solid var(--accent); color:var(--accent2);
+               border-radius:99px; padding:5px 14px; font-size:13px; cursor:pointer; }
+  .navbadge { background:var(--accent); color:#fff; border-radius:99px; font-size:11px;
+              padding:1px 7px; margin-left:6px; }
   .btn.danger { background:var(--red); }
   .btn.green { background:var(--green); }
   .conn-actions { margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
@@ -100,7 +116,7 @@
 </header>
 <nav>
   <a href="#/recaps" data-route="recaps">Game Recaps</a>
-  <a href="#/messages" data-route="messages">Messages</a>
+  <a href="#/messages" data-route="messages">Messages<span class="navbadge" id="msg-badge" hidden></span></a>
   <a href="#/connections" data-route="connections">Connectors</a>
   <a href="#/settings" data-route="settings">Settings</a>
 </nav>
@@ -123,6 +139,9 @@ const art = (s, cls) => {
 };
 
 let cache = { recaps: [], events: [], connections: null, status: null };
+let msgFilter = "all";      // source filter chip
+let showRead = false;       // unread-only by default
+let undoIds = null;         // ids from the last Read-all, for Undo
 async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
 
 async function refresh() {
@@ -134,6 +153,9 @@ async function refresh() {
     pill.textContent = cache.status.state === "gaming"
       ? "🎮 gaming — " + (cache.status.application || "") : cache.status.state;
     pill.className = cache.status.state === "gaming" ? "gaming" : "";
+    const unread = cache.events.filter(e => !e.read_at).length;
+    const badge = document.querySelector("#msg-badge");
+    badge.textContent = unread; badge.hidden = !unread;
   } catch (e) { /* login expired — views show their own message */ }
 }
 
@@ -189,12 +211,41 @@ const views = {
       : `<div class="empty">A quiet session — nothing came in.</div>`}`;
   },
   messages() {
-    if (!cache.events.length) return `<div class="empty"><div class="big">📥</div>Nothing caught yet.</div>`;
-    return `<div class="sub">Every message GameGate has caught, newest first.</div>`
-      + cache.events.map(e => `
-      <div class="card row"><span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
+    const all = cache.events;
+    const sources = [...new Set(all.map(e => e.source))];
+    const unreadBy = (src) => all.filter(e => !e.read_at && (src === "all" || e.source === src)).length;
+    const chips = ["all", ...sources].map(s => `
+      <span class="fchip ${msgFilter === s ? "on" : ""}" onclick="msgFilter='${s}';route()">
+        ${s === "all" ? "All" : (SRC[s]||"") + " " + esc(s)} ${unreadBy(s) ? `<b>${unreadBy(s)}</b>` : ""}
+      </span>`).join("");
+    const bar = `<div class="filter-bar">${chips}
+      <span style="margin-left:auto"></span>
+      <span class="fchip ${showRead ? "on" : ""}" onclick="showRead=!showRead;route()">${showRead ? "Showing all" : "Unread only"}</span>
+      ${undoIds ? `<span class="undo-pill" onclick="undoReadAll()">↩ Undo read all</span>`
+                : `<span class="fchip" onclick="readAll()">Read all</span>`}
+    </div>`;
+
+    let shown = all.filter(e => msgFilter === "all" || e.source === msgFilter);
+    if (!showRead) shown = shown.filter(e => !e.read_at);
+    if (!shown.length) return bar + `<div class="empty"><div class="big">📥</div>
+      ${showRead ? "Nothing here." : "All caught up — nothing unread."}</div>`;
+
+    const card = (e) => `
+      <div class="card row ${e.read_at ? "isread" : ""}">
+        <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
         <div style="min-width:0"><div>${esc(e.sender)} — ${esc(e.title)}</div>
-        <div class="muted">${SRC[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div></div>`).join("");
+        <div class="muted">${SRC[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div>
+        ${e.read_at
+          ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
+          : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
+      </div>`;
+    const section = (title, cls, items) => items.length
+      ? `<div class="section-title ${cls}">${title}</div>` + items.map(card).join("") : "";
+
+    return bar
+      + section("🔴 Urgent", "urgent", shown.filter(e => e.priority === "urgent"))
+      + section("🟡 Needs action", "action", shown.filter(e => e.priority === "actionable"))
+      + section("Everything else", "", shown.filter(e => !["urgent","actionable"].includes(e.priority)));
   },
   connections() {
     const c = cache.connections;
@@ -234,6 +285,25 @@ function route() {
   view.innerHTML = (views[name] || views.recaps)(arg);
 }
 
+async function markRead(id, read) {
+  await fetch(`/events/${id}/${read ? "read" : "unread"}`, { method: "POST" });
+  await refresh(); route();
+}
+async function readAll() {
+  const r = await fetch("/events/read-all", { method: "POST" });
+  const body = await r.json().catch(() => ({}));
+  undoIds = body.marked && body.marked.length ? body.marked : null;
+  await refresh(); route();
+  setTimeout(() => { undoIds = null; if (location.hash.includes("messages")) route(); }, 12000);
+}
+async function undoReadAll() {
+  if (undoIds) await fetch("/events/unread", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: undoIds }),
+  });
+  undoIds = null;
+  await refresh(); route();
+}
 function toggleConn(id) {
   const el = document.querySelector("#acts-" + id);
   if (el) el.hidden = !el.hidden;

@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 
 from app.deps import get_event_repo, get_ingest_service
 from app.models.event import Event, EventIn
@@ -21,6 +22,35 @@ def create_event(incoming: EventIn, response: Response, ingest: IngestDep) -> Ev
         # Idempotent replay: same (source, external_id) → return the original.
         response.status_code = 200
     return event
+
+
+@router.post("/events/{event_id}/read")
+def mark_read(event_id: str, repo: EventRepoDep) -> dict:
+    if not repo.mark_read(event_id, read=True):
+        raise HTTPException(status_code=404, detail="Unknown event")
+    return {"read": event_id}
+
+
+@router.post("/events/{event_id}/unread")
+def mark_unread(event_id: str, repo: EventRepoDep) -> dict:
+    if not repo.mark_read(event_id, read=False):
+        raise HTTPException(status_code=404, detail="Unknown event")
+    return {"unread": event_id}
+
+
+@router.post("/events/read-all")
+def read_all(repo: EventRepoDep) -> dict:
+    return {"marked": repo.mark_all_read()}
+
+
+class UnreadBulk(BaseModel):
+    ids: list[str]
+
+
+@router.post("/events/unread")
+def unread_bulk(body: UnreadBulk, repo: EventRepoDep) -> dict:
+    count = sum(1 for event_id in body.ids if repo.mark_read(event_id, read=False))
+    return {"unmarked": count}
 
 
 @router.get("/events", response_model=list[Event])
