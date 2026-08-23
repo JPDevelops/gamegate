@@ -84,6 +84,9 @@ class FullApiClient(ApiClient):
     def latest_digest(self) -> dict | None:
         return self._request("GET", "/digest/latest")
 
+    def client_settings(self) -> dict | None:
+        return self._request("GET", "/settings/client")
+
 
 def notification_title_body(event: dict) -> tuple[str, str]:
     # Only actually-urgent events get the scary word (live find: an Amazon
@@ -103,21 +106,36 @@ def digest_title_body(digest: dict) -> tuple[str, str]:
 
 class ToastPump:
     """Poll pending items → show toast → ack. Ack only after a successful
-    show, so a failed/closed notifier never loses anything."""
+    show, so a failed/closed notifier never loses anything. User settings
+    (sound, duration) are fetched from the server and applied only when the
+    settings version changes (Orion: version-gated)."""
 
     def __init__(self, api: FullApiClient, show_fn) -> None:
         self.api = api
         self.show = show_fn
+        self._settings_version = -1
+        self.sound = True
+        self.duration_s = 8
+
+    def _apply_settings(self) -> None:
+        settings = self.api.client_settings()
+        if settings and settings.get("version", -1) != self._settings_version:
+            self._settings_version = settings.get("version", -1)
+            self.sound = bool(settings.get("notification_sound", True))
+            self.duration_s = int(settings.get("overlay_duration_s", 8))
 
     def run_once(self) -> int:
+        self._apply_settings()
         delivered = 0
         for notification in self.api.pending_notifications():
             title, body = notification_title_body(notification.get("event", {}))
-            if self.show(title, body) and self.api.ack_notification(notification["id"]):
+            shown = self.show(title, body, duration_s=self.duration_s, sound=self.sound)
+            if shown and self.api.ack_notification(notification["id"]):
                 delivered += 1
         for digest in self.api.pending_digests():
             title, body = digest_title_body(digest)
-            if self.show(title, body) and self.api.ack_digest(digest["id"]):
+            shown = self.show(title, body, duration_s=self.duration_s, sound=self.sound)
+            if shown and self.api.ack_digest(digest["id"]):
                 delivered += 1
         return delivered
 
@@ -148,7 +166,7 @@ class DndController:
         return self.active
 
 
-def windows_toast(title: str, body: str) -> bool:
+def windows_toast(title: str, body: str, duration_s: int = 8, sound: bool = True) -> bool:
     """Native Windows toast (fallback notifier). Returns False on any
     failure so the pump retries instead of acking."""
     try:
@@ -260,18 +278,22 @@ def run_tray() -> None:
     def on_status(icon, _item):
         status = api.get_status()
         state = status["state"] if status else "API unreachable"
-        notify("GameGate status", str(state))
+        notify("GameGate status", str(state), duration_s=pump.duration_s, sound=pump.sound)
 
     def on_digest(icon, _item):
         digest = api.latest_digest()
         if digest:
-            notify(*digest_title_body(digest))
+            title, body = digest_title_body(digest)
+            notify(title, body, duration_s=pump.duration_s, sound=pump.sound)
         else:
-            notify("GameGate", "No digest yet.")
+            notify("GameGate", "No digest yet.", duration_s=pump.duration_s, sound=pump.sound)
 
     def on_dnd(icon, _item):
         active = dnd.toggle()
-        notify("GameGate", "Do Not Disturb ON" if active else "Back to available")
+        notify(
+            "GameGate", "Do Not Disturb ON" if active else "Back to available",
+            duration_s=pump.duration_s, sound=pump.sound,
+        )
 
     def on_quit(icon, _item):
         stop.set()

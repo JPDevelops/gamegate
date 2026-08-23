@@ -89,6 +89,23 @@
                border-radius:99px; padding:5px 14px; font-size:13px; cursor:pointer; }
   .navbadge { background:var(--accent); color:#fff; border-radius:99px; font-size:11px;
               padding:1px 7px; margin-left:6px; }
+  body.light { --bg:#f4f5f9; --panel:#ffffff; --panel2:#eceef4; --line:#d8dbe6;
+               --text:#1d2029; --muted:#6a6e80; }
+  .setrow { display:flex; align-items:center; gap:12px; padding:13px 4px;
+            border-bottom:1px solid var(--line); }
+  .setrow:last-child { border-bottom:none; }
+  .setrow .lbl { flex:1; min-width:0; }
+  .setrow .lbl .muted { font-size:12.5px; }
+  .switch { width:44px; height:24px; border-radius:99px; background:var(--line);
+            position:relative; cursor:pointer; flex:none; transition:background .15s; }
+  .switch::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px;
+                   border-radius:50%; background:#fff; transition:left .15s; }
+  .switch.on { background:var(--accent); }
+  .switch.on::after { left:23px; }
+  .setinput { background:var(--panel2); border:1px solid var(--line); color:var(--text);
+              border-radius:8px; padding:8px 12px; font:inherit; width:100%; }
+  input.num { width:80px; text-align:center; }
+  .danger-zone { border-color:var(--red); }
   .btn.danger { background:var(--red); }
   .btn.green { background:var(--green); }
   .conn-actions { margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
@@ -138,7 +155,8 @@ const art = (s, cls) => {
   return "";
 };
 
-let cache = { recaps: [], events: [], connections: null, status: null };
+let cache = { recaps: [], events: [], connections: null, status: null, userSettings: null };
+if (localStorage.getItem("gg-theme") === "light") document.body.classList.add("light");
 let msgFilter = "all";      // source filter chip
 let msgView = "unread";     // 'unread' (importance sections) | 'read' (archive)
 let undoIds = null;         // ids from the last Read-all, for Undo
@@ -146,9 +164,11 @@ async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r
 
 async function refresh() {
   try {
-    [cache.status, cache.events, cache.recaps, cache.connections] = await Promise.all([
-      j("/status"), j("/events?limit=100"), j("/digests?limit=20"), j("/connections"),
-    ]);
+    [cache.status, cache.events, cache.recaps, cache.connections, cache.userSettings] =
+      await Promise.all([
+        j("/status"), j("/events?limit=100"), j("/digests?limit=20"),
+        j("/connections"), j("/settings"),
+      ]);
     const pill = document.querySelector("#state-pill");
     pill.textContent = cache.status.state === "gaming"
       ? "🎮 gaming — " + (cache.status.application || "") : cache.status.state;
@@ -276,11 +296,52 @@ const views = {
       + `<button class="fab" onclick="showCatalog()">＋ Add a connector</button>`;
   },
   settings() {
-    const c = cache.connections;
-    if (!c) return `<div class="empty">Session expired — reopen your dashboard link.</div>`;
-    return `<div class="card"><table class="settings">${
-      Object.entries(c.settings).map(([k,v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")
-    }</table></div>`;
+    const s = cache.userSettings;
+    if (!s) return `<div class="empty">Loading…</div>`;
+    const sw = (key, label, hint) => `
+      <div class="setrow"><div class="lbl"><div>${label}</div><div class="muted">${hint}</div></div>
+        <div class="switch ${s[key] ? "on" : ""}" onclick="setSetting('${key}', ${!s[key]})"></div></div>`;
+    const dark = !document.body.classList.contains("light");
+    return `
+    <div class="section-title">Notifications</div>
+    <div class="card">
+      ${sw("urgent_breakthrough", "Urgent break-through while gaming",
+           "Truly urgent messages pop the overlay mid-game. Off = everything waits for the recap.")}
+      ${sw("notification_sound", "Notification sound", "Play a sound when the overlay appears.")}
+      <div class="setrow"><div class="lbl"><div>Overlay duration</div>
+        <div class="muted">Seconds the card stays on screen (4–20).</div></div>
+        <input class="setinput num" type="number" min="4" max="20" value="${s.overlay_duration_s}"
+          onchange="setSetting('overlay_duration_s', parseInt(this.value)||8)"></div>
+    </div>
+    <div class="section-title">Do Not Disturb</div>
+    <div class="card">
+      <div class="setrow"><div class="lbl"><div>Do Not Disturb</div>
+        <div class="muted">Hold everything (like gaming, but manual). Currently: <b>${cache.status && cache.status.state === "focused" ? "ON" : "off"}</b></div></div>
+        <div class="switch ${cache.status && cache.status.state === "focused" ? "on" : ""}" onclick="toggleDnd()"></div></div>
+    </div>
+    <div class="section-title">Rules</div>
+    <div class="card">
+      <div class="setrow"><div class="lbl"><div>VIP senders</div>
+        <div class="muted">Messages from these emails always break through. Comma-separated.</div>
+        <input class="setinput" style="margin-top:8px" value="${esc(s.vip_senders.join(", "))}"
+          onchange="setSetting('vip_senders', this.value.split(',').map(x=>x.trim()).filter(Boolean))"></div></div>
+      <div class="setrow"><div class="lbl"><div>Urgent keywords</div>
+        <div class="muted">Any message containing these words is treated urgent.</div>
+        <input class="setinput" style="margin-top:8px" value="${esc(s.urgent_keywords.join(", "))}"
+          onchange="setSetting('urgent_keywords', this.value.split(',').map(x=>x.trim()).filter(Boolean))"></div></div>
+    </div>
+    <div class="section-title">Appearance</div>
+    <div class="card">
+      <div class="setrow"><div class="lbl"><div>Dark mode</div>
+        <div class="muted">This device only.</div></div>
+        <div class="switch ${dark ? "on" : ""}" onclick="toggleTheme()"></div></div>
+    </div>
+    <div class="section-title">Danger zone</div>
+    <div class="card danger-zone">
+      <div class="setrow"><div class="lbl"><div>Clear message data</div>
+        <div class="muted">Deletes all messages, recaps, and sessions. Settings and connections survive. Cannot be undone.</div></div>
+        <button class="btn danger" onclick="clearData()">Clear…</button></div>
+    </div>`;
   },
 };
 
@@ -292,6 +353,31 @@ function route() {
   view.innerHTML = (views[name] || views.recaps)(arg);
 }
 
+async function setSetting(key, value) {
+  const r = await fetch("/settings", { method: "PUT",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) });
+  if (!r.ok) { const b = await r.json().catch(() => ({})); alert(b.detail || "Invalid value"); }
+  await refresh(); route();
+}
+async function toggleDnd() {
+  const on = cache.status && cache.status.state === "focused";
+  await fetch("/status", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: on ? "available" : "focused" }) });
+  await refresh(); route();
+}
+function toggleTheme() {
+  document.body.classList.toggle("light");
+  localStorage.setItem("gg-theme", document.body.classList.contains("light") ? "light" : "dark");
+  route();
+}
+async function clearData() {
+  const typed = prompt('This deletes ALL messages, recaps, and sessions. Type DELETE to confirm:');
+  if (typed !== "DELETE") return;
+  await fetch("/data/clear", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "DELETE" }) });
+  await refresh(); route();
+}
 async function markRead(id, read) {
   await fetch(`/events/${id}/${read ? "read" : "unread"}`, { method: "POST" });
   await refresh(); route();

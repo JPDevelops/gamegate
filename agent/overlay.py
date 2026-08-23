@@ -102,7 +102,9 @@ def _badge_photo(size: int = 22):
         return None
 
 
-def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) -> bool:
+def show_overlay(
+    title: str, body: str, duration_s: int = DEFAULT_DURATION_S, sound: bool = True
+) -> bool:
     """Display the overlay card. Returns False on any failure so the pump
     retries instead of acking. Sequential by design — cards never stack."""
     try:
@@ -247,7 +249,8 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
 
         fade()
         tick()
-        play_sound()
+        if sound:
+            play_sound()
         root.mainloop()
         return True
     except Exception:
