@@ -530,9 +530,6 @@ function route() {
 }
 
 window.addEventListener("hashchange", route);
-window.addEventListener("pywebviewready", () => {
-  document.querySelector("#win-controls").style.display = "flex";
-});
 (async () => { await refresh(); route(); })();
 setInterval(async () => {
   await refresh();

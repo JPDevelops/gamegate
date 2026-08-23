@@ -17,7 +17,7 @@ python tray_app.py
 A colored dot appears in the tray: 🟢 available · 🟣 gaming · 🔴 do-not-disturb.
 Right-click → **Open GameGate** (the desktop window: Inbox / Connections / Settings) / Status / Last digest / Do Not Disturb / Quit.
 
-The window uses Windows' built-in Edge WebView2 engine (preinstalled on Windows 11).
+The window uses Windows' built-in Edge WebView2 engine (preinstalled on Windows 11). It keeps the NATIVE window frame — so Snap, Win+arrow, and maximize all work — with the title bar painted in app colors via DWM.
 
 ## Package into GameGate.exe
 
