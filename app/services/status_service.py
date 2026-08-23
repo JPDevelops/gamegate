@@ -55,6 +55,7 @@ class StatusService:
             self.session_repo.open(
                 update.application,
                 update.started_at.isoformat() if update.started_at else None,
+                update.app_id,
             )
             log.info("Gaming session opened (%s)", update.application)
         elif leaving_game:

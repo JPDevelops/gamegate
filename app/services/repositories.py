@@ -125,13 +125,16 @@ class SessionRepository:
     def __init__(self, db: Database) -> None:
         self.db = db
 
-    def open(self, application: str | None, started_at: str | None) -> str:
+    def open(
+        self, application: str | None, started_at: str | None, app_id: str | None = None
+    ) -> str:
         session_id = uuid4().hex
         conn = self.db.connection()
         with conn:
             conn.execute(
-                "INSERT INTO sessions (id, application, started_at) VALUES (?, ?, ?)",
-                (session_id, application, started_at or _now()),
+                "INSERT INTO sessions (id, application, started_at, app_id)"
+                " VALUES (?, ?, ?, ?)",
+                (session_id, application, started_at or _now(), app_id),
             )
         return session_id
 
@@ -157,6 +160,7 @@ class SessionRepository:
             )
         return {
             "id": row["id"], "application": row["application"],
+            "app_id": row["app_id"],  # column guaranteed by the init migration
             "started_at": row["started_at"], "ended_at": ended.isoformat(),
             "duration_seconds": duration,
         }
