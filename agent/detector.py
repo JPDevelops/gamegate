@@ -95,6 +95,62 @@ def psutil_process_lister() -> dict[str, str]:
     return processes
 
 
+def parse_acf_fields(text: str) -> dict:
+    """Minimal Valve ACF parser: top-level "key" "value" pairs we care about."""
+    import re
+
+    fields = {}
+    for key in ("appid", "name", "installdir"):
+        match = re.search(rf'"{key}"\s+"([^"]*)"', text)
+        if match:
+            fields[key] = match.group(1)
+    return fields
+
+
+def prettify_exe(name: str) -> str:
+    """Fallback label when no Steam manifest matches: rustclient.exe -> Rust."""
+    stem = name.rsplit(".", 1)[0].lower()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in ("client", "launcher", "-win64-shipping", "_win64", "win64", "x64", "shipping"):
+            stripped = stem.removesuffix(suffix).rstrip("-_ ")
+            if stripped != stem and stripped:
+                stem, changed = stripped, True
+    return (stem or name).title()
+
+
+def steam_game_identity(exe_path: str) -> tuple[str, str] | None:
+    """(friendly name, steam appid) from the library's appmanifest files.
+    exe_path .../steamapps/common/<installdir>/... identifies the manifest."""
+    import re
+    from pathlib import Path as P
+
+    match = re.search(r"(.*steamapps)[\\/]common[\\/]([^\\/]+)", exe_path, re.IGNORECASE)
+    if not match:
+        return None
+    steamapps, installdir = P(match.group(1)), match.group(2).lower()
+    try:
+        for manifest in steamapps.glob("appmanifest_*.acf"):
+            fields = parse_acf_fields(manifest.read_text(errors="ignore"))
+            if fields.get("installdir", "").lower() == installdir and fields.get("name"):
+                return fields["name"], fields.get("appid", "")
+    except OSError:
+        return None
+    return None
+
+
+def resolve_display(game: str, processes: dict[str, str]) -> tuple[str, str | None]:
+    """Human name + optional Steam appid for the detected game label."""
+    exe_path = processes.get(game, "")
+    identity = steam_game_identity(exe_path) if exe_path else None
+    if identity:
+        return identity[0], identity[1] or None
+    if game.startswith("steam-app-"):
+        return game, game.removeprefix("steam-app-")
+    return prettify_exe(game), None
+
+
 def windows_steam_running_app_id() -> int:
     """Steam writes the current game's app id here; 0 when not playing."""
     try:
@@ -142,9 +198,13 @@ class ApiClient:
         self.base_url = base_url.rstrip("/")
         self.token = token
 
-    def post_status(self, state: str, application: str | None, started_at: str | None) -> bool:
+    def post_status(
+        self, state: str, application: str | None, started_at: str | None,
+        app_id: str | None = None,
+    ) -> bool:
         body = json.dumps(
-            {"state": state, "application": application, "started_at": started_at}
+            {"state": state, "application": application, "started_at": started_at,
+             "app_id": app_id}
         ).encode()
         headers = {"Content-Type": "application/json"}
         if self.token:
@@ -191,10 +251,11 @@ class Detector:
 
         if desired_state == "gaming":
             started_at = datetime.now(UTC).isoformat()
-            if self.api.post_status("gaming", active_game, started_at):
+            display_name, app_id = resolve_display(active_game, processes)
+            if self.api.post_status("gaming", display_name, started_at, app_id):
                 self.last_reported_state = "gaming"
                 self.game_started_at = started_at
-                log.info("Transition -> GAMING (%s)", active_game)
+                log.info("Transition -> GAMING (%s)", display_name)
         else:
             if self.api.post_status("available", None, None):
                 self.last_reported_state = "available"

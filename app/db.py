@@ -64,6 +64,11 @@ class Database:
         self._local = threading.local()
         with self.connection() as conn:
             conn.executescript(SCHEMA)
+            # Lightweight migration: columns added after first release.
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN app_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # already present
 
     def connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)

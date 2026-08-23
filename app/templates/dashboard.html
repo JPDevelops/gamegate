@@ -54,6 +54,9 @@
   table.settings td { padding:9px 4px; border-bottom:1px solid var(--line); font-size:14px; }
   table.settings td:first-child { color:var(--muted); width:45%; }
   .recap-game { font-size:17px; font-weight:600; }
+  .art { width:92px; height:43px; border-radius:8px; object-fit:cover; flex:none;
+         background:var(--panel2); }
+  .hero-art { width:100%; max-width:340px; border-radius:10px; margin-bottom:14px; display:block; }
   .recap-duration { font-size:26px; font-weight:700; color:var(--accent2);
                     margin-left:auto; flex:none; }
   .back { color:var(--accent2); text-decoration:none; font-size:14px;
@@ -100,6 +103,9 @@ const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
 const fmtDur = (s) => { const m = Math.floor(s/60), h = Math.floor(m/60);
   return h ? h+"h "+String(m%60).padStart(2,"0")+"m" : m+"m "+String(s%60).padStart(2,"0")+"s"; };
 const SRC = { gmail:"✉️", discord:"💬", slack:"#️⃣", system:"⚙️" };
+const art = (s, cls) => s && s.app_id
+  ? `<img class="${cls}" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg"
+       onerror="this.remove()">` : "";
 
 let cache = { recaps: [], events: [], connections: null, status: null };
 async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
@@ -120,8 +126,9 @@ function recapCard(d) {
   const s = d.session || {};
   const actions = (d.action_required || []).length;
   return `<div class="card click row" onclick="location.hash='#/recap/${esc(d.id)}'">
+    ${art(s, "art")}
     <div style="min-width:0">
-      <div class="recap-game">🎮 ${esc(s.application || "Session")}</div>
+      <div class="recap-game">${s.app_id ? "" : "🎮 "}${esc(s.application || "Session")}</div>
       <div class="muted">${ago(d.created_at)} · ${d.total_events} message${d.total_events===1?"":"s"}${actions ? ` · <span style="color:var(--amber)">${actions} need action</span>` : ""}</div>
     </div>
     <div class="recap-duration">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : ""}</div>
@@ -144,7 +151,8 @@ const views = {
     const actions = d.action_required || [];
     return `<a class="back" href="#/recaps">← All recaps</a>
     <div class="hero">
-      <div class="game">🎮 ${esc(s.application || "Session")}</div>
+      ${art(s, "hero-art")}
+      <div class="game">${s.app_id ? "" : "🎮 "}${esc(s.application || "Session")}</div>
       <div class="dur">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : "—"}</div>
       <div class="meta">${s.started_at ? new Date(s.started_at).toLocaleString() : ""} · ${ago(d.created_at)}</div>
       <div class="stat-row">

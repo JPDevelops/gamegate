@@ -33,7 +33,7 @@ class FakeApi:
         self.up = up
         self.calls = []
 
-    def post_status(self, state, application, started_at):
+    def post_status(self, state, application, started_at, app_id=None):
         if not self.up:
             return False
         self.calls.append((state, application))
@@ -104,7 +104,7 @@ def test_game_start_and_stop_send_one_transition_each():
 
     assert api.calls == [
         ("available", None),
-        ("gaming", "helldivers2.exe"),
+        ("gaming", "Helldivers2"),  # display name resolved from the exe
         ("available", None),
     ]
 
@@ -118,7 +118,7 @@ def test_api_downtime_is_retried_not_lost():
 
     api.up = True
     detector.poll_once()  # retried automatically on next cycle
-    assert api.calls == [("gaming", "helldivers2.exe")]
+    assert api.calls == [("gaming", "Helldivers2")]
     assert detector.last_reported_state == "gaming"
 
 
@@ -164,3 +164,38 @@ def test_frozen_build_reads_config_next_to_exe(tmp_path, monkeypatch):
     monkeypatch.setattr(detector_module.sys, "executable", str(exe))
     config = detector_module.load_config()
     assert config["api_url"] == "http://from-exe-dir"
+
+
+ACF = '''
+"AppState"
+{
+\t"appid"\t\t"252490"
+\t"name"\t\t"Rust"
+\t"installdir"\t\t"Rust"
+}
+'''
+
+
+def test_acf_parsing_and_identity(tmp_path):
+    from detector import parse_acf_fields, resolve_display, steam_game_identity
+
+    fields = parse_acf_fields(ACF)
+    assert fields == {"appid": "252490", "name": "Rust", "installdir": "Rust"}
+
+    steamapps = tmp_path / "steamapps"
+    (steamapps / "common" / "Rust").mkdir(parents=True)
+    (steamapps / "appmanifest_252490.acf").write_text(ACF)
+    exe = str(steamapps / "common" / "Rust" / "rustclient.exe")
+    assert steam_game_identity(exe) == ("Rust", "252490")
+
+    name, app_id = resolve_display("rustclient.exe", {"rustclient.exe": exe})
+    assert (name, app_id) == ("Rust", "252490")
+
+
+def test_prettify_fallback_for_non_steam_games():
+    from detector import prettify_exe, resolve_display
+
+    assert prettify_exe("rustclient.exe") == "Rust"
+    assert prettify_exe("fortniteclient-win64-shipping.exe") == "Fortnite"
+    name, app_id = resolve_display("myindiegame.exe", {"myindiegame.exe": r"d:\games\myindiegame.exe"})
+    assert name == "Myindiegame" and app_id is None
