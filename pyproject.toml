@@ -6,7 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",
+    "httpx>=0.28",
 ]
+
+[project.optional-dependencies]
+discord = ["discord.py>=2.7"]
+agent = ["psutil>=5.9"]
 
 [dependency-groups]
 dev = [
