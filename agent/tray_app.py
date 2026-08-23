@@ -179,18 +179,25 @@ def open_window() -> None:
 
 
 class WindowApi:
-    """Bridge for the in-page window controls (frameless = we own the chrome)."""
+    """Bridge for the in-page window controls (frameless = we own the chrome).
 
-    def __init__(self) -> None:
-        self.window = None
+    MUST hold no attributes: pywebview introspects js_api objects to build
+    the JS bridge, and storing the Window here made it walk the native .NET
+    object graph (Bounds.Empty is self-referential) into infinite recursion —
+    the launch freeze Jules hit. Methods reach the window via webview.windows
+    instead."""
 
     def minimize(self) -> None:
-        if self.window:
-            self.window.minimize()
+        import webview
+
+        if webview.windows:
+            webview.windows[0].minimize()
 
     def close(self) -> None:
-        if self.window:
-            self.window.destroy()
+        import webview
+
+        if webview.windows:
+            webview.windows[0].destroy()
 
 
 def run_window() -> None:
@@ -199,13 +206,11 @@ def run_window() -> None:
     import webview
 
     config = load_config()
-    api = WindowApi()
-    window = webview.create_window(
+    webview.create_window(
         "GameGate", build_window_url(config),
         width=1080, height=760, background_color="#0f1014",
-        frameless=True, easy_drag=False, js_api=api,
+        frameless=True, easy_drag=False, js_api=WindowApi(),
     )
-    api.window = window
     webview.start()
 
 
