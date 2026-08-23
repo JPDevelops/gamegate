@@ -40,8 +40,11 @@ def build_client() -> discord.Client:
     @client.event
     async def on_ready():
         log.info("Connected as %s", client.user)
-        # on_ready fires again after reconnects — one pump only (Vega audit #5).
-        if not pump_started["done"]:
+        # Delivery is the desktop app's job (PO decision 2026-08-23); this pump
+        # only runs if explicitly re-enabled. on_ready fires again after
+        # reconnects — one pump only (Vega audit #5).
+        deliver = os.environ.get("GAMEGATE_DISCORD_DELIVERY", "false").lower() == "true"
+        if deliver and not pump_started["done"]:
             pump_started["done"] = True
             client.loop.create_task(pump_loop())
 
