@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 
 from detector import ApiClient, Detector, load_config, psutil_process_lister
+from overlay import show_overlay
 
 log = logging.getLogger("gamegate.tray")
 
@@ -116,8 +117,8 @@ class DndController:
 
 
 def windows_toast(title: str, body: str) -> bool:
-    """Native Windows toast. Returns False on any failure so the pump
-    retries instead of acking."""
+    """Native Windows toast (fallback notifier). Returns False on any
+    failure so the pump retries instead of acking."""
     try:
         from winotify import Notification
 
@@ -128,6 +129,15 @@ def windows_toast(title: str, body: str) -> bool:
         return False
 
 
+def pick_notifier(config: dict):
+    """Jules' spec: overlay (top-right box + sound) is the default; native
+    toasts remain available via config {"notifier": "toast"} — note Focus
+    Assist suppresses toasts during fullscreen gaming."""
+    if config.get("notifier", "overlay") == "toast":
+        return windows_toast
+    return show_overlay
+
+
 def run_tray() -> None:
     """Wire the tray icon, detector thread, and toast pump together."""
     import pystray
@@ -136,7 +146,8 @@ def run_tray() -> None:
     config = load_config()
     api = FullApiClient(config["api_url"], config["api_token"])
     detector = Detector(config, psutil_process_lister, api)
-    pump = ToastPump(api, windows_toast)
+    notify = pick_notifier(config)
+    pump = ToastPump(api, notify)
     dnd = DndController(api)
     stop = threading.Event()
 
@@ -170,18 +181,18 @@ def run_tray() -> None:
     def on_status(icon, _item):
         status = api.get_status()
         state = status["state"] if status else "API unreachable"
-        windows_toast("GameGate status", str(state))
+        notify("GameGate status", str(state))
 
     def on_digest(icon, _item):
         digest = api.latest_digest()
         if digest:
-            windows_toast(*digest_title_body(digest))
+            notify(*digest_title_body(digest))
         else:
-            windows_toast("GameGate", "No digest yet.")
+            notify("GameGate", "No digest yet.")
 
     def on_dnd(icon, _item):
         active = dnd.toggle()
-        windows_toast("GameGate", "Do Not Disturb ON" if active else "Back to available")
+        notify("GameGate", "Do Not Disturb ON" if active else "Back to available")
 
     def on_quit(icon, _item):
         stop.set()
