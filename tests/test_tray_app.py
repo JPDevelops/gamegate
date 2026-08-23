@@ -48,7 +48,7 @@ def test_pump_shows_then_acks():
     pump = ToastPump(api, lambda title, body: shown.append((title, body)) or True)
     assert pump.run_once() == 2
     assert api.acked == ["n1", "d1"]
-    assert "Urgent — GMAIL" in shown[0][0]
+    assert shown[0][0].endswith("— GMAIL")
     assert pump.run_once() == 0  # drained — nothing re-shown
 
 
@@ -92,10 +92,14 @@ def test_dnd_stays_off_if_api_down():
 
 def test_formatting():
     title, body = notification_title_body(
-        {"source": "slack", "sender": "coworker", "title": "prod down"}
+        {"source": "slack", "sender": "coworker", "title": "prod down", "priority": "urgent"}
     )
     assert title == "Urgent — SLACK"
     assert "coworker" in body
+    title, _ = notification_title_body(
+        {"source": "gmail", "sender": "amazon", "title": "shipped", "priority": "informational"}
+    )
+    assert title == "New — GMAIL"  # non-urgent cards must not cry wolf
     title, body = digest_title_body({"text": "Line1\nLine2\nLine3"})
     assert title == "Line1"
     assert "Line2" in body

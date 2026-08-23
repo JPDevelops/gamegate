@@ -135,21 +135,29 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
         text_x = px(TEXT_X)
         text_width = width - text_x - px(28)
 
-        # Estimate wrapped body lines so the card hugs its content.
-        body_lines = 0
-        for paragraph in (body or " ").splitlines() or [" "]:
-            body_lines += max(1, -(-body_font.measure(paragraph) // text_width))
-        body_lines = min(body_lines, 6)
-
-        height = compute_card_height(body_lines, screen_h, scale)
-        width, height, x, y = compute_geometry(screen_w, screen_h, height)
-        root.geometry(f"{width}x{height}+{x}+{y}")
-
         canvas = tk.Canvas(
-            root, bg=TRANSPARENT_KEY if transparent_ok else BG,
-            highlightthickness=0, width=width, height=height,
+            root, bg=TRANSPARENT_KEY if transparent_ok else BG, highlightthickness=0
         )
         canvas.pack(fill="both", expand=True)
+
+        # Measure-then-draw (live find: word-wrap estimates undercount and
+        # clipped a 3-line Gmail subject). Render the real text items, read
+        # their true bounding boxes, then size the card around them.
+        probe_title = canvas.create_text(
+            text_x, 0, text=title, anchor="nw", font=title_font, width=text_width
+        )
+        title_h = canvas.bbox(probe_title)[3] - canvas.bbox(probe_title)[1]
+        probe_body = canvas.create_text(
+            text_x, 0, text=body, anchor="nw", font=body_font, width=text_width
+        )
+        body_h = canvas.bbox(probe_body)[3] - canvas.bbox(probe_body)[1]
+        canvas.delete(probe_title, probe_body)
+
+        wanted = px(V_PAD + HEADER_H) + title_h + px(6) + body_h + px(26)
+        height = max(px(MIN_HEIGHT), min(wanted, int(screen_h * MAX_HEIGHT_FRACTION)))
+        width, height, x, y = compute_geometry(screen_w, screen_h, height)
+        root.geometry(f"{width}x{height}+{x}+{y}")
+        canvas.configure(width=width, height=height)
 
         # Card, edge, accent bar (inset so it never fights the corners).
         canvas.create_polygon(
@@ -183,14 +191,14 @@ def show_overlay(title: str, body: str, duration_s: int = DEFAULT_DURATION_S) ->
         )
         canvas.tag_bind(close, "<Button-1>", lambda _e: root.destroy())
 
-        # Title + body.
+        # Title + body (positions from the measured title height).
         title_y = px(V_PAD + HEADER_H)
         canvas.create_text(
             text_x, title_y, text=title, anchor="nw", fill=FG_TITLE,
             font=title_font, width=text_width,
         )
         canvas.create_text(
-            text_x, title_y + px(TITLE_H), text=body, anchor="nw", fill=FG_BODY,
+            text_x, title_y + title_h + px(6), text=body, anchor="nw", fill=FG_BODY,
             font=body_font, width=text_width,
         )
 
