@@ -84,8 +84,11 @@ class FullApiClient(ApiClient):
 
 
 def notification_title_body(event: dict) -> tuple[str, str]:
+    # Only actually-urgent events get the scary word (live find: an Amazon
+    # shipping email was labeled 'Urgent' — the card must not cry wolf).
+    label = "Urgent" if event.get("priority") == "urgent" else "New"
     return (
-        f"Urgent — {event.get('source', '?').upper()}",
+        f"{label} — {event.get('source', '?').upper()}",
         f"{event.get('sender', '?')}: {event.get('title', '')}",
     )
 
