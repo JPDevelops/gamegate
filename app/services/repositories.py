@@ -188,6 +188,13 @@ class DigestRepository:
         ).fetchall()
         return [self._to_dict(r) for r in rows]
 
+    def recent(self, limit: int = 10) -> list[dict]:
+        rows = self.db.connection().execute(
+            "SELECT * FROM digests ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [self._to_dict(r) for r in rows]
+
     def ack(self, digest_id: str) -> bool:
         conn = self.db.connection()
         with conn:

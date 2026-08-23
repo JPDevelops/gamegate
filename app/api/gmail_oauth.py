@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Cookie, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
@@ -107,9 +107,9 @@ def write_token_file(tokens: dict, client_id: str, client_secret: str) -> str:
 
 
 @router.get("/connect/gmail")
-def connect_gmail(key: str = "") -> RedirectResponse:
+def connect_gmail(key: str = "", gamegate_token: str | None = Cookie(default=None)) -> RedirectResponse:
     expected = get_settings().api_token
-    if expected and key != expected:
+    if expected and key != expected and gamegate_token != expected:
         raise HTTPException(status_code=401, detail="key query parameter required")
     client_id, _secret, redirect_uri = _oauth_config()
     params = urlencode(

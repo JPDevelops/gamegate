@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GameGate</title>
+<style>
+  :root { --bg:#0f1014; --panel:#17181f; --panel2:#1e2029; --line:#2a2d3a;
+          --text:#e8e9ee; --muted:#9a9db0; --accent:#7c3aed; --accent2:#a78bfa;
+          --green:#3ba55d; --red:#d83c3e; --amber:#d8a03c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font:15px/1.5 "Segoe UI",system-ui,sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:16px 22px;
+           border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
+  .logo { width:26px; height:26px; border-radius:7px; background:var(--panel2);
+          display:grid; place-items:center; }
+  .logo::after { content:""; width:12px; height:12px; border-radius:50%;
+                 border:3px solid var(--accent); }
+  h1 { font-size:16px; letter-spacing:.18em; }
+  #state-pill { margin-left:auto; border:1px solid var(--line); border-radius:99px;
+                padding:4px 14px; font-size:13px; color:var(--muted); }
+  #state-pill.gaming { color:var(--accent2); border-color:var(--accent); }
+  nav { display:flex; gap:4px; padding:10px 18px 0; border-bottom:1px solid var(--line); }
+  nav button { background:none; border:none; color:var(--muted); font:inherit;
+               padding:10px 16px; cursor:pointer; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--text); border-bottom-color:var(--accent); }
+  main { max-width:860px; margin:0 auto; padding:22px 18px 60px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+          padding:16px 18px; margin-bottom:12px; }
+  .row { display:flex; align-items:center; gap:10px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .chip { font-size:11px; padding:2px 9px; border-radius:99px; border:1px solid var(--line);
+          color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .chip.urgent { color:#fff; background:var(--red); border-color:var(--red); }
+  .chip.actionable { color:#111; background:var(--amber); border-color:var(--amber); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
+  .dot.ok { background:var(--green); } .dot.warn { background:var(--amber); }
+  .dot.off { background:var(--line); }
+  .digest-text { white-space:pre-wrap; background:var(--panel2); border-radius:8px;
+                 padding:12px; font-size:13.5px; margin-top:8px; }
+  .btn { background:var(--accent); border:none; color:#fff; border-radius:8px;
+         padding:8px 16px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  .section-title { font-size:13px; letter-spacing:.14em; color:var(--muted);
+                   text-transform:uppercase; margin:22px 0 10px; }
+  .empty { text-align:center; color:var(--muted); padding:40px 0; }
+  table.settings { width:100%; border-collapse:collapse; }
+  table.settings td { padding:9px 4px; border-bottom:1px solid var(--line); font-size:14px; }
+  table.settings td:first-child { color:var(--muted); width:45%; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div><h1>GAMEGATE</h1>
+  <div id="state-pill">…</div>
+</header>
+<nav>
+  <button data-tab="inbox" class="active">Inbox</button>
+  <button data-tab="connections">Connections</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+<main>
+  <section id="tab-inbox">
+    <div class="section-title">Digests</div>
+    <div id="digests"><div class="empty">Loading…</div></div>
+    <div class="section-title">Recent messages</div>
+    <div id="events"><div class="empty">Loading…</div></div>
+  </section>
+  <section id="tab-connections" hidden>
+    <div id="connections"><div class="empty">Loading…</div></div>
+  </section>
+  <section id="tab-settings" hidden>
+    <div class="card"><table class="settings" id="settings-table"></table></div>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  ["inbox","connections","settings"].forEach(t => $("#tab-"+t).hidden = t !== b.dataset.tab);
+});
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
+  if (m < 1) return "now"; if (m < 60) return Math.floor(m)+"m ago";
+  if (m < 1440) return Math.floor(m/60)+"h ago"; return Math.floor(m/1440)+"d ago"; };
+
+async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+async function load() {
+  try {
+    const status = await j("/status");
+    const pill = $("#state-pill");
+    pill.textContent = status.state === "gaming"
+      ? "🎮 gaming — " + (status.application || "") : status.state;
+    pill.className = status.state === "gaming" ? "gaming" : "";
+
+    const events = await j("/events?limit=50");
+    $("#events").innerHTML = events.length ? events.map(e => `
+      <div class="card row">
+        <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
+        <div style="min-width:0">
+          <div>${esc(e.sender)} — ${esc(e.title)}</div>
+          <div class="muted">${esc(e.source)} · ${ago(e.received_at)}</div>
+        </div>
+      </div>`).join("") : '<div class="empty">Nothing caught yet.</div>';
+
+    const digests = await j("/digests?limit=5");
+    $("#digests").innerHTML = digests.length ? digests.map(d => `
+      <div class="card">
+        <div class="row"><strong>${esc((d.text||"Digest").split("\n")[0])}</strong>
+          <span class="muted" style="margin-left:auto">${ago(d.created_at)}</span></div>
+        <div class="digest-text">${esc(d.text)}</div>
+      </div>`).join("") : '<div class="empty">No digests yet — finish a gaming session.</div>';
+
+    const c = await j("/connections");
+    const conn = (name, s) => `
+      <div class="card row">
+        <span class="dot ${s.state === "connected" ? "ok" : s.state === "needs setup" ? "warn" : "off"}"></span>
+        <div><div>${name}</div><div class="muted">${esc(s.detail)}</div></div>
+        ${s.action ? `<a class="btn" style="margin-left:auto" href="${s.action.href}">${esc(s.action.label)}</a>` : ""}
+      </div>`;
+    $("#connections").innerHTML =
+      conn("Discord", c.discord) + conn("Gmail", c.gmail) +
+      conn("Slack", c.slack) + conn("AI classifier", c.classifier);
+
+    $("#settings-table").innerHTML = Object.entries(c.settings)
+      .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+  } catch (err) {
+    $("#events").innerHTML = '<div class="empty">Session expired — reopen your dashboard link.</div>';
+  }
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
