@@ -41,11 +41,14 @@ class FakeApi:
         self.statuses.append(state)
         return True
 
+    def client_settings(self):
+        return {"notification_sound": True, "overlay_duration_s": 8, "version": 1}
+
 
 def test_pump_shows_then_acks():
     api = FakeApi()
     shown = []
-    pump = ToastPump(api, lambda title, body: shown.append((title, body)) or True)
+    pump = ToastPump(api, lambda title, body, **kw: shown.append((title, body)) or True)
     assert pump.run_once() == 2
     assert api.acked == ["n1", "d1"]
     assert shown[0][0].endswith("— GMAIL")
@@ -54,7 +57,7 @@ def test_pump_shows_then_acks():
 
 def test_pump_failed_toast_keeps_items_pending():
     api = FakeApi()
-    pump = ToastPump(api, lambda title, body: False)
+    pump = ToastPump(api, lambda title, body, **kw: False)
     assert pump.run_once() == 0
     assert api.acked == []
     assert len(api.pending_notifications()) == 1  # retried next cycle
@@ -132,3 +135,15 @@ def test_window_api_holds_no_attributes():
     from tray_app import WindowApi
 
     assert vars(WindowApi()) == {}
+
+
+def test_pump_applies_settings_only_on_version_change():
+    api = FakeApi()
+    versions = [{"notification_sound": False, "overlay_duration_s": 12, "version": 5}]
+    api.client_settings = lambda: versions[0]
+    pump = ToastPump(api, lambda title, body, **kw: True)
+    pump.run_once()
+    assert pump.sound is False and pump.duration_s == 12
+    # same version -> values stay applied, no churn
+    pump.run_once()
+    assert pump._settings_version == 5

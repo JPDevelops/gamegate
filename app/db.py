@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS digests (
     delivered INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS art_cache (
     game TEXT PRIMARY KEY,
     url TEXT NOT NULL DEFAULT '',

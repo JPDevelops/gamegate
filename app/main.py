@@ -12,6 +12,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.digest import router as digest_router
 from app.api.events import router as events_router
 from app.api.gmail_oauth import router as gmail_oauth_router
+from app.api.settings import router as settings_router
 from app.api.status import router as status_router
 from app.config import get_settings
 
@@ -38,6 +39,7 @@ app.include_router(gmail_oauth_router)
 app.include_router(dashboard_router)
 app.include_router(art_router)
 app.include_router(connectors_router)
+app.include_router(settings_router)
 
 
 class HealthResponse(BaseModel):
