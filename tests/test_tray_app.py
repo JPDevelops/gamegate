@@ -153,3 +153,25 @@ def test_update_script_path_source_and_frozen(monkeypatch):
     monkeypatch.setattr(tray_app.sys, "executable", "/x/gamegate/agent/dist/GameGate.exe")
     frozen_path = tray_app.update_script_path()
     assert frozen_path.as_posix().endswith("agent/update.ps1")
+
+
+def test_update_checker_counts_and_survives_git_failure(tmp_path):
+    from tray_app import UpdateChecker
+
+    calls = []
+
+    def fake_git(args):
+        calls.append(args)
+        if args[0] == "fetch":
+            return ""
+        return "3"
+
+    checker = UpdateChecker(tmp_path, run_fn=fake_git)
+    assert checker.pending_changes() == 3
+    assert calls[0][0] == "fetch"
+
+    broken = UpdateChecker(tmp_path, run_fn=lambda args: None)
+    assert broken.pending_changes() == 0
+
+    garbage = UpdateChecker(tmp_path, run_fn=lambda args: "" if args[0] == "fetch" else "not-a-number")
+    assert garbage.pending_changes() == 0
