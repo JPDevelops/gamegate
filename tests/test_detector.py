@@ -148,3 +148,19 @@ def test_config_ignore_list_extends_builtins():
     }
     assert detect_game(processes, [], True, no_steam) == "notagame.exe"
     assert detect_game(processes, [], True, no_steam, ["notagame.exe"]) is None
+
+
+def test_frozen_build_reads_config_next_to_exe(tmp_path, monkeypatch):
+    """PyInstaller onefile: __file__ is a temp dir; config.json lives next to
+    the .exe (sys.executable)."""
+    import json as jsonlib
+
+    import detector as detector_module
+
+    exe = tmp_path / "GameGate.exe"
+    exe.write_bytes(b"")
+    (tmp_path / "config.json").write_text(jsonlib.dumps({"api_url": "http://from-exe-dir"}))
+    monkeypatch.setattr(detector_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(detector_module.sys, "executable", str(exe))
+    config = detector_module.load_config()
+    assert config["api_url"] == "http://from-exe-dir"

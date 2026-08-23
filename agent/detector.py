@@ -62,9 +62,17 @@ HELPER_PROCESSES = {
 }
 
 
+def app_dir() -> Path:
+    """Folder the app lives in. For a PyInstaller onefile build, __file__
+    points into a temp extraction dir — config.json sits next to the .exe."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
 def load_config(path: str | None = None) -> dict:
     config = dict(DEFAULT_CONFIG)
-    config_path = Path(path) if path else Path(__file__).parent / "config.json"
+    config_path = Path(path) if path else app_dir() / "config.json"
     if config_path.exists():
         config.update(json.loads(config_path.read_text()))
     config["game_processes"] = [p.lower() for p in config["game_processes"]]
