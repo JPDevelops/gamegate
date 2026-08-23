@@ -33,11 +33,17 @@ def build_client() -> discord.Client:
         os.environ.get("GAMEGATE_API_TOKEN", ""),
     )
     delivery_channel_id = int(os.environ.get("GAMEGATE_DISCORD_CHANNEL_ID", "0"))
+    allowed_guild_id = int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0"))
+    no_mentions = discord.AllowedMentions.none()
+    pump_started = {"done": False}
 
     @client.event
     async def on_ready():
         log.info("Connected as %s", client.user)
-        client.loop.create_task(pump_loop())
+        # on_ready fires again after reconnects — one pump only (Vega audit #5).
+        if not pump_started["done"]:
+            pump_started["done"] = True
+            client.loop.create_task(pump_loop())
 
     async def pump_loop():
         channel = client.get_channel(delivery_channel_id)
@@ -52,7 +58,9 @@ def build_client() -> discord.Client:
     def _send_sync(channel, text: str) -> bool:
         if channel is None:
             return False
-        future = asyncio.run_coroutine_threadsafe(channel.send(text), client.loop)
+        future = asyncio.run_coroutine_threadsafe(
+            channel.send(text, allowed_mentions=no_mentions), client.loop
+        )
         try:
             future.result(timeout=15)
             return True
@@ -64,14 +72,23 @@ def build_client() -> discord.Client:
     async def on_message(message: discord.Message):
         if message.author.bot:
             return
+        # Only the configured guild is trusted — no other server's users can
+        # query digests or feed events into GameGate (Nebula audit #4).
+        if message.guild is None or (
+            allowed_guild_id and message.guild.id != allowed_guild_id
+        ):
+            return
         text = message.content.strip()
         if text == "!status":
-            await message.channel.send(format_status_reply(api.get_status()))
+            await message.channel.send(
+                format_status_reply(api.get_status()), allowed_mentions=no_mentions
+            )
             return
         if text == "!digest":
             preview = api.get_digest_preview()
             await message.channel.send(
-                preview.get("text", "Nothing queued.") if preview else "API unreachable."
+                preview.get("text", "Nothing queued.") if preview else "API unreachable.",
+                allowed_mentions=no_mentions,
             )
             return
         payload = normalize_message(
@@ -80,7 +97,7 @@ def build_client() -> discord.Client:
             getattr(message.channel, "name", "DM"),
             message.content,
             message.created_at.isoformat(),
-            is_dm=message.guild is None,
+            is_dm=False,
         )
         await asyncio.to_thread(api.post_event, payload)
 

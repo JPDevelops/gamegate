@@ -7,7 +7,7 @@ from app.security import require_api_token
 from app.services.classifier import Classification, SafeClassifier, build_classifier
 from app.services.repositories import EventRepository
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_token)])
 
 EventRepoDep = Annotated[EventRepository, Depends(get_event_repo)]
 ClassifierDep = Annotated[SafeClassifier, Depends(build_classifier)]
@@ -16,7 +16,6 @@ ClassifierDep = Annotated[SafeClassifier, Depends(build_classifier)]
 @router.post(
     "/events/{event_id}/classify",
     response_model=Classification,
-    dependencies=[Depends(require_api_token)],
 )
 def classify_event(
     event_id: str, repo: EventRepoDep, classifier: ClassifierDep

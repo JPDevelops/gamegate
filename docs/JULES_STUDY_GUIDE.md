@@ -15,7 +15,7 @@
 | The AI | `app/services/classifier.py` | "Behind an interface, schema-validated, always falls back — never a point of failure" |
 | Translators | `app/integrations/` | "Each service's weird payload becomes our one Event shape at the door" |
 | Your PC's agent | `agent/detector.py` | "Watches processes, reports only transitions, retries when the server's down" |
-| The gate | `app/security.py` | "Writes need the shared token; reads are open" |
+| The gate | `app/security.py` | "Every data endpoint needs the shared token; only /health is open" |
 
 ## Part 2 — The five principles this codebase runs on
 

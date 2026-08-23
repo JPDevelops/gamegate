@@ -11,7 +11,7 @@ from app.services.repositories import (
     NotificationRepository,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_token)])
 
 DigestRepoDep = Annotated[DigestRepository, Depends(get_digest_repo)]
 EventRepoDep = Annotated[EventRepository, Depends(get_event_repo)]
@@ -43,7 +43,7 @@ def pending_digests(digests: DigestRepoDep) -> list[dict]:
     return pending
 
 
-@router.post("/digests/{digest_id}/ack", dependencies=[Depends(require_api_token)])
+@router.post("/digests/{digest_id}/ack")
 def ack_digest(digest_id: str, digests: DigestRepoDep) -> dict:
     if not digests.ack(digest_id):
         raise HTTPException(status_code=404, detail="Unknown or already-delivered digest")
@@ -55,7 +55,7 @@ def pending_notifications(notifications: NotificationRepoDep) -> list[dict]:
     return notifications.pending()
 
 
-@router.post("/notifications/{notification_id}/ack", dependencies=[Depends(require_api_token)])
+@router.post("/notifications/{notification_id}/ack")
 def ack_notification(notification_id: str, notifications: NotificationRepoDep) -> dict:
     if not notifications.ack(notification_id):
         raise HTTPException(status_code=404, detail="Unknown or already-delivered notification")

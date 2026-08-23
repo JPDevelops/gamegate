@@ -116,13 +116,20 @@ def build_real_client() -> GmailClient:
                     h["name"].lower(): h["value"]
                     for h in msg.get("payload", {}).get("headers", [])
                 }
+                from datetime import UTC, datetime
+
+                # internalDate is epoch millis — always parseable, unlike the
+                # RFC-2822 Date header (Vega audit #6).
+                received = datetime.fromtimestamp(
+                    int(msg.get("internalDate", 0)) / 1000, tz=UTC
+                ).isoformat()
                 results.append(
                     {
                         "id": msg["id"],
                         "sender": headers.get("from", "unknown"),
                         "subject": headers.get("subject", "(no subject)"),
                         "snippet": msg.get("snippet", ""),
-                        "received_at": headers.get("date", ""),
+                        "received_at": received,
                     }
                 )
             return results
