@@ -16,12 +16,29 @@ stays unit-testable on any OS.
 """
 import json
 import logging
+import signal
+import socket
 import threading
 import urllib.error
 import urllib.request
 
 from detector import ApiClient, Detector, load_config, psutil_process_lister
 from overlay import show_overlay
+
+SINGLE_INSTANCE_PORT = 47653  # arbitrary fixed port; second launch fails the bind
+
+
+def acquire_single_instance_lock() -> socket.socket | None:
+    """Bind a localhost port as a cross-process mutex. Returns the held
+    socket, or None if another GameGate instance already owns it (issue #33:
+    multiple instances caused ghost trays and un-quittable icons)."""
+    lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        lock.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
+        return lock
+    except OSError:
+        lock.close()
+        return None
 
 log = logging.getLogger("gamegate.tray")
 
@@ -207,6 +224,13 @@ def run_tray() -> None:
             pystray.MenuItem("Quit", on_quit),
         ),
     )
+    # Ctrl+C in the console stops everything cleanly (issue #33).
+    def handle_sigint(_sig, _frame):
+        stop.set()
+        icon.stop()
+
+    signal.signal(signal.SIGINT, handle_sigint)
+
     threading.Thread(target=detector_loop, daemon=True).start()
     threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
     icon.run()
@@ -214,4 +238,8 @@ def run_tray() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    _lock = acquire_single_instance_lock()
+    if _lock is None:
+        log.error("GameGate is already running — exiting.")
+        raise SystemExit(1)
     run_tray()

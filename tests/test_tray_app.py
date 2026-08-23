@@ -86,3 +86,16 @@ def test_formatting():
     title, body = digest_title_body({"text": "Line1\nLine2\nLine3"})
     assert title == "Line1"
     assert "Line2" in body
+
+
+def test_single_instance_lock_blocks_second_copy():
+    from tray_app import acquire_single_instance_lock
+
+    first = acquire_single_instance_lock()
+    assert first is not None
+    second = acquire_single_instance_lock()
+    assert second is None  # a second GameGate refuses to start
+    first.close()
+    third = acquire_single_instance_lock()
+    assert third is not None  # released cleanly after exit
+    third.close()
