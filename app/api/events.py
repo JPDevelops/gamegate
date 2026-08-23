@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Response
 
 from app.deps import get_event_repo, get_ingest_service
 from app.models.event import Event, EventIn
+from app.security import require_api_token
 from app.services.ingest_service import IngestService
 from app.services.repositories import EventRepository
 
@@ -13,7 +14,7 @@ EventRepoDep = Annotated[EventRepository, Depends(get_event_repo)]
 IngestDep = Annotated[IngestService, Depends(get_ingest_service)]
 
 
-@router.post("/events", response_model=Event, status_code=201)
+@router.post("/events", response_model=Event, status_code=201, dependencies=[Depends(require_api_token)])
 def create_event(incoming: EventIn, response: Response, ingest: IngestDep) -> Event:
     event, created, _decision = ingest.ingest(incoming)
     if not created:
