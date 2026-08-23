@@ -196,40 +196,39 @@ def open_window() -> None:
         subprocess.Popen([sys.executable, __file__, "--window"])
 
 
-class WindowApi:
-    """Bridge for the in-page window controls (frameless = we own the chrome).
+def _darken_titlebar(window) -> None:
+    """Native frame, dark trim: paint the Windows title bar in the app's own
+    colors via DWM. Restores everything frameless broke (Aero Snap, Win+arrow,
+    maximize) while keeping the chrome dark — Jules' both requirements."""
+    try:
+        import ctypes
 
-    MUST hold no attributes: pywebview introspects js_api objects to build
-    the JS bridge, and storing the Window here made it walk the native .NET
-    object graph (Bounds.Empty is self-referential) into infinite recursion —
-    the launch freeze Jules hit. Methods reach the window via webview.windows
-    instead."""
-
-    def minimize(self) -> None:
-        import webview
-
-        if webview.windows:
-            webview.windows[0].minimize()
-
-    def close(self) -> None:
-        import webview
-
-        if webview.windows:
-            webview.windows[0].destroy()
+        handle = window.native.Handle
+        hwnd = handle.ToInt32() if hasattr(handle, "ToInt32") else int(handle)
+        dwm = ctypes.windll.dwmapi
+        one = ctypes.c_int(1)
+        for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (19 on older builds)
+            dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(one), ctypes.sizeof(one))
+        # Win11: exact caption + text colors (COLORREF is 0x00BBGGRR)
+        caption = ctypes.c_uint(0x00161110)  # our sidebar color #101116
+        text = ctypes.c_uint(0x00EFE8E6)     # our text color #e6e8ef
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), ctypes.sizeof(caption))
+        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), ctypes.sizeof(text))
+    except Exception:  # noqa: BLE001 — cosmetic; never block the window
+        log.debug("Dark titlebar not applied (pre-Win10 or non-Windows)")
 
 
 def run_window() -> None:
-    """The desktop window: frameless native window (Edge WebView2) rendering
-    the dashboard with its own dark chrome — no white trim (Jules' fix #1)."""
+    """The desktop window: NATIVE frame (snap/maximize/Win+arrow all work)
+    with the title bar painted in app colors — Edge WebView2 inside."""
     import webview
 
     config = load_config()
-    webview.create_window(
+    window = webview.create_window(
         "GameGate", build_window_url(config),
         width=1080, height=760, background_color="#0f1014",
-        frameless=True, easy_drag=False, js_api=WindowApi(),
     )
-    webview.start()
+    webview.start(_darken_titlebar, window)
 
 
 def pick_notifier(config: dict):

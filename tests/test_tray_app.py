@@ -129,13 +129,6 @@ def test_window_url_carries_login_key():
     assert build_window_url({"api_url": "http://server"}) == "http://server/app"
 
 
-def test_window_api_holds_no_attributes():
-    """Regression (live freeze): pywebview introspects js_api attributes; any
-    stored object can send the bridge into native-object recursion."""
-    from tray_app import WindowApi
-
-    assert vars(WindowApi()) == {}
-
 
 def test_pump_applies_settings_only_on_version_change():
     api = FakeApi()
