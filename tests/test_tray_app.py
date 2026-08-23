@@ -17,7 +17,7 @@ class FakeApi:
         self.notifications = [
             {"id": "n1", "event": {"source": "gmail", "sender": "boss", "title": "Call me"}}
         ]
-        self.digests = [{"id": "d1", "text": "Gaming session complete — 2h\n3 events"}]
+        self.digests = [{"id": "d1", "text": "Game Recap — g.exe, 2h 00m\n3 events"}]
         self.acked = []
         self.statuses = []
 
