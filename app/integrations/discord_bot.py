@@ -34,6 +34,7 @@ def build_client() -> discord.Client:
     )
     delivery_channel_id = int(os.environ.get("GAMEGATE_DISCORD_CHANNEL_ID", "0"))
     allowed_guild_id = int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0"))
+    owner_id = int(os.environ.get("GAMEGATE_OWNER_DISCORD_ID", "0"))
     no_mentions = discord.AllowedMentions.none()
     pump_started = {"done": False}
 
@@ -93,6 +94,10 @@ def build_client() -> discord.Client:
                 preview.get("text", "Nothing queued.") if preview else "API unreachable.",
                 allowed_mentions=no_mentions,
             )
+            return
+        # The owner's own messages are never ingested (issue #34) — you should
+        # not be interrupted by yourself. Commands above still work.
+        if owner_id and message.author.id == owner_id:
             return
         payload = normalize_message(
             str(message.id),
