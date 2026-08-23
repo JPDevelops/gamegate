@@ -33,6 +33,7 @@ DEFAULT_CONFIG = {
     "api_url": "http://127.0.0.1:8000",
     "api_token": "",
     "game_processes": [],          # optional manual additions
+    "ignore_processes": [],        # never treat these as games (extends built-ins)
     "auto_detect": True,
     "poll_interval_seconds": 5,
 }
@@ -48,11 +49,16 @@ LIBRARY_MARKERS = (
     "\\battle.net\\",
 )
 
-# Launcher/helper binaries that live in game folders but aren't the game.
+# Launcher/helper binaries that live in game folders but aren't the game —
+# plus non-game apps commonly installed via Steam (Wallpaper Engine was a
+# real false positive on Jules' PC, 2026-08-23: it lives in steamapps\common
+# and runs 24/7, locking the state to GAMING forever).
 HELPER_PROCESSES = {
     "steam.exe", "steamwebhelper.exe", "epicgameslauncher.exe",
     "epicwebhelper.exe", "crashpad_handler.exe", "gameoverlayui.exe",
     "easyanticheat.exe", "battle.net.exe", "riotclientservices.exe",
+    "wallpaper32.exe", "wallpaper64.exe", "ui32.exe", "ui64.exe",
+    "wallpaperservice32_c.exe", "webwallpaper32.exe", "webwallpaper64.exe",
 }
 
 
@@ -62,6 +68,7 @@ def load_config(path: str | None = None) -> dict:
     if config_path.exists():
         config.update(json.loads(config_path.read_text()))
     config["game_processes"] = [p.lower() for p in config["game_processes"]]
+    config["ignore_processes"] = [p.lower() for p in config.get("ignore_processes", [])]
     return config
 
 
@@ -97,9 +104,11 @@ def detect_game(
     manual_list: list[str],
     auto_detect: bool = True,
     steam_app_id_reader=windows_steam_running_app_id,
+    ignore_list: list[str] | None = None,
 ) -> str | None:
     """Return the detected game's label, or None. Layered:
     manual list → launcher-folder paths → Steam registry."""
+    ignored = HELPER_PROCESSES | set(ignore_list or [])
     for name in manual_list:
         if name in processes:
             return name
@@ -108,7 +117,7 @@ def detect_game(
         return None
 
     for name, exe_path in processes.items():
-        if name in HELPER_PROCESSES:
+        if name in ignored:
             continue
         if any(marker in exe_path for marker in LIBRARY_MARKERS):
             return name
@@ -165,6 +174,7 @@ class Detector:
             self.config["game_processes"],
             self.config.get("auto_detect", True),
             self.steam_app_id_reader,
+            self.config.get("ignore_processes"),
         )
         desired_state = "gaming" if active_game else "available"
 
