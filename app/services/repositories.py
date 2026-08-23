@@ -70,6 +70,28 @@ class EventRepository:
         ).fetchall()
         return [self._to_event(r) for r in rows]
 
+    def mark_read(self, event_id: str, read: bool = True) -> bool:
+        """Idempotent view-state flip. Returns False for unknown ids."""
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE events SET read_at = ? WHERE id = ?",
+                (_now() if read else None, event_id),
+            )
+        return cur.rowcount > 0
+
+    def mark_all_read(self) -> list[str]:
+        conn = self.db.connection()
+        ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM events WHERE read_at IS NULL"
+        ).fetchall()]
+        with conn:
+            conn.executemany(
+                "UPDATE events SET read_at = ? WHERE id = ?",
+                [(_now(), event_id) for event_id in ids],
+            )
+        return ids
+
     def mark_delivered(self, event_ids: list[str], digest_id: str | None) -> None:
         conn = self.db.connection()
         with conn:
@@ -86,6 +108,7 @@ class EventRepository:
             received_at=row["received_at"], priority=row["priority"],
             requires_action=bool(row["requires_action"]),
             metadata=json.loads(row["metadata"]), created_at=row["created_at"],
+            read_at=row["read_at"],
         )
 
 
