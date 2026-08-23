@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 from branding import render_badge
-from detector import ApiClient, Detector, load_config, psutil_process_lister
+from detector import ApiClient, Detector, app_dir, load_config, psutil_process_lister
 from overlay import enable_dpi_awareness, show_overlay, show_update_prompt
 
 SINGLE_INSTANCE_PORT = 47653  # arbitrary fixed port; second launch fails the bind
@@ -270,6 +270,22 @@ class UpdateChecker:
             return 0
 
 
+def build_info() -> str:
+    """'abc1234 · Aug 24 02:10' from build_info.json next to the exe/source,
+    or 'source' / 'unstamped' when absent."""
+    try:
+        candidates = [app_dir() / "build_info.json"]
+        if getattr(sys, "frozen", False):
+            candidates.append(Path(sys.executable).parent / "build_info.json")
+        for path in candidates:
+            if path.exists():
+                data = json.loads(path.read_text())
+                return f"{data.get('build', '?')} · {data.get('built', '?')}"
+        return "source" if not getattr(sys, "frozen", False) else "unstamped build"
+    except Exception:  # noqa: BLE001 — cosmetic
+        return "unknown"
+
+
 def update_script_path() -> Path:
     """agent/update.ps1, whether we're the frozen exe (agent/dist/GameGate.exe)
     or running from source (agent/tray_app.py)."""
@@ -388,9 +404,11 @@ def run_tray() -> None:
     def on_open(icon, _item):
         open_window()
 
+    log.info("GameGate build: %s", build_info())
     icon = pystray.Icon(
         "GameGate", icons["available"], "GameGate",
         menu=pystray.Menu(
+            pystray.MenuItem(f"Build: {build_info()}", None, enabled=False),
             pystray.MenuItem("Open GameGate", on_open, default=True),
             pystray.MenuItem("Status", on_status),
             pystray.MenuItem("Last digest", on_digest),
