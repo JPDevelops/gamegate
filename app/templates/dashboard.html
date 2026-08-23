@@ -140,7 +140,7 @@ const art = (s, cls) => {
 
 let cache = { recaps: [], events: [], connections: null, status: null };
 let msgFilter = "all";      // source filter chip
-let showRead = false;       // unread-only by default
+let msgView = "unread";     // 'unread' (importance sections) | 'read' (archive)
 let undoIds = null;         // ids from the last Read-all, for Undo
 async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
 
@@ -218,20 +218,23 @@ const views = {
       <span class="fchip ${msgFilter === s ? "on" : ""}" onclick="msgFilter='${s}';route()">
         ${s === "all" ? "All" : (SRC[s]||"") + " " + esc(s)} ${unreadBy(s) ? `<b>${unreadBy(s)}</b>` : ""}
       </span>`).join("");
-    const bar = `<div class="filter-bar">${chips}
+    const readCount = all.filter(e => e.read_at).length;
+    const bar = `<div class="filter-bar">
+      <span class="fchip ${msgView === "unread" ? "on" : ""}" onclick="msgView='unread';route()">Unread</span>
+      <span class="fchip ${msgView === "read" ? "on" : ""}" onclick="msgView='read';route()">Read ${readCount ? `<b>${readCount}</b>` : ""}</span>
+      <span style="width:14px"></span>${chips}
       <span style="margin-left:auto"></span>
-      <span class="fchip ${showRead ? "on" : ""}" onclick="showRead=!showRead;route()">${showRead ? "Showing all" : "Unread only"}</span>
-      ${undoIds ? `<span class="undo-pill" onclick="undoReadAll()">↩ Undo read all</span>`
-                : `<span class="fchip" onclick="readAll()">Read all</span>`}
+      ${msgView === "unread" ? (undoIds ? `<span class="undo-pill" onclick="undoReadAll()">↩ Undo read all</span>`
+                : `<span class="fchip" onclick="readAll()">Read all</span>`) : ""}
     </div>`;
 
     let shown = all.filter(e => msgFilter === "all" || e.source === msgFilter);
-    if (!showRead) shown = shown.filter(e => !e.read_at);
-    if (!shown.length) return bar + `<div class="empty"><div class="big">📥</div>
-      ${showRead ? "Nothing here." : "All caught up — nothing unread."}</div>`;
+    shown = shown.filter(e => msgView === "read" ? e.read_at : !e.read_at);
+    if (!shown.length) return bar + `<div class="empty"><div class="big">${msgView === "read" ? "📖" : "📥"}</div>
+      ${msgView === "read" ? "Nothing read yet." : "All caught up — nothing unread."}</div>`;
 
     const card = (e) => `
-      <div class="card row ${e.read_at ? "isread" : ""}">
+      <div class="card row">
         <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
         <div style="min-width:0"><div>${esc(e.sender)} — ${esc(e.title)}</div>
         <div class="muted">${SRC[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div>
@@ -239,6 +242,10 @@ const views = {
           ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
           : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
       </div>`;
+    if (msgView === "read") {
+      // the archive: flat, newest first — read stuff never crowds importance
+      return bar + shown.map(card).join("");
+    }
     const section = (title, cls, items) => items.length
       ? `<div class="section-title ${cls}">${title}</div>` + items.map(card).join("") : "";
 
