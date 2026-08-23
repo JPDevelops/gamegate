@@ -1,16 +1,22 @@
-from fastapi import APIRouter
+from typing import Annotated
 
+from fastapi import APIRouter, Depends
+
+from app.deps import get_status_service
 from app.models.status import StatusResponse, StatusUpdate
-from app.services.status_store import status_store
+from app.services.status_service import StatusService
 
 router = APIRouter()
 
+StatusServiceDep = Annotated[StatusService, Depends(get_status_service)]
+
 
 @router.get("/status", response_model=StatusResponse)
-def get_status() -> StatusResponse:
-    return status_store.get()
+def get_status(service: StatusServiceDep) -> StatusResponse:
+    return service.get()
 
 
 @router.post("/status", response_model=StatusResponse)
-def set_status(update: StatusUpdate) -> StatusResponse:
-    return status_store.set(update)
+def set_status(update: StatusUpdate, service: StatusServiceDep) -> StatusResponse:
+    result, _closed_session = service.set(update)
+    return result
