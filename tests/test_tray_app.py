@@ -175,3 +175,14 @@ def test_update_checker_counts_and_survives_git_failure(tmp_path):
 
     garbage = UpdateChecker(tmp_path, run_fn=lambda args: "" if args[0] == "fetch" else "not-a-number")
     assert garbage.pending_changes() == 0
+
+
+def test_build_info_reads_stamp(tmp_path, monkeypatch):
+    import json as jsonlib
+
+    import tray_app
+
+    monkeypatch.setattr(tray_app, "app_dir", lambda: tmp_path)
+    assert tray_app.build_info() == "source"
+    (tmp_path / "build_info.json").write_text(jsonlib.dumps({"build": "abc1234", "built": "Aug 24 02:10"}))
+    assert tray_app.build_info() == "abc1234 · Aug 24 02:10"

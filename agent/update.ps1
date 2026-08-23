@@ -15,7 +15,10 @@ Write-Host "[1/4] Pulling latest..." -ForegroundColor Cyan
 git pull
 
 Set-Location $agent
-Write-Host "[2/4] Building GameGate.exe (takes ~30s)..." -ForegroundColor Cyan
+$hash = git rev-parse --short HEAD
+$stamp = Get-Date -Format "MMM d HH:mm"
+"{`"build`": `"$hash`", `"built`": `"$stamp`"}" | Out-File -Encoding utf8 build_info.json
+Write-Host "[2/4] Building GameGate.exe $hash (takes ~30s)..." -ForegroundColor Cyan
 if (Test-Path "dist\GameGate.exe") { Remove-Item "dist\GameGate.exe" -Force }
 python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py
 
@@ -27,6 +30,7 @@ if (-not (Test-Path "dist\GameGate.exe")) {
 
 Write-Host "[3/4] Copying config..." -ForegroundColor Cyan
 if (Test-Path "config.json") { Copy-Item "config.json" "dist\" -Force }
+if (Test-Path "build_info.json") { Copy-Item "build_info.json" "dist\" -Force }
 
 Write-Host "[4/4] Launching the new GameGate..." -ForegroundColor Cyan
 Start-Process "$agent\dist\GameGate.exe"
