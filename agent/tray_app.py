@@ -22,8 +22,9 @@ import threading
 import urllib.error
 import urllib.request
 
+from branding import render_badge
 from detector import ApiClient, Detector, load_config, psutil_process_lister
-from overlay import show_overlay
+from overlay import enable_dpi_awareness, show_overlay
 
 SINGLE_INSTANCE_PORT = 47653  # arbitrary fixed port; second launch fails the bind
 
@@ -158,7 +159,6 @@ def pick_notifier(config: dict):
 def run_tray() -> None:
     """Wire the tray icon, detector thread, and toast pump together."""
     import pystray
-    from PIL import Image, ImageDraw
 
     config = load_config()
     api = FullApiClient(config["api_url"], config["api_token"])
@@ -168,13 +168,7 @@ def run_tray() -> None:
     dnd = DndController(api)
     stop = threading.Event()
 
-    def make_icon(color: str) -> Image.Image:
-        image = Image.new("RGB", (64, 64), "white")
-        ImageDraw.Draw(image).ellipse((8, 8, 56, 56), fill=color)
-        return image
-
-    icons = {"available": make_icon("#3ba55d"), "gaming": make_icon("#7c3aed"),
-             "focused": make_icon("#d83c3e")}
+    icons = {state: render_badge(state) for state in ("available", "gaming", "focused")}
 
     def detector_loop():
         while not stop.is_set():
@@ -238,6 +232,7 @@ def run_tray() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    enable_dpi_awareness()
     _lock = acquire_single_instance_lock()
     if _lock is None:
         log.error("GameGate is already running — exiting.")

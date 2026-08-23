@@ -30,3 +30,11 @@ def test_overlay_is_default_notifier():
 
 def test_toast_available_via_config():
     assert pick_notifier({"notifier": "toast"}) is windows_toast
+
+
+def test_rounded_rect_points_shape():
+    from overlay import rounded_rect_points
+
+    points = rounded_rect_points(0, 0, 100, 50, 10)
+    assert len(points) == 24  # 12 (x,y) pairs for the smooth polygon
+    assert max(points[::2]) == 100 and max(points[1::2]) == 50
