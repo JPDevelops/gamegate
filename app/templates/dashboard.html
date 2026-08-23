@@ -5,140 +5,234 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GameGate</title>
 <style>
-  :root { --bg:#0f1014; --panel:#17181f; --panel2:#1e2029; --line:#2a2d3a;
-          --text:#e8e9ee; --muted:#9a9db0; --accent:#7c3aed; --accent2:#a78bfa;
-          --green:#3ba55d; --red:#d83c3e; --amber:#d8a03c; }
+  :root {
+    --bg-side:#101116; --bg-app:#16181f; --bg-card:#1d2027; --bg-hover:#232733;
+    --bg-inset:#13151b; --line:#2a2e3a; --line-soft:#232734;
+    --text:#e6e8ef; --text-dim:#b6bac9; --muted:#8a8fa3;
+    --accent:#7c3aed; --accent-soft:#8b5cf622; --accent2:#a78bfa;
+    --green:#23a55a; --red:#da373c; --amber:#f0b232;
+    --radius:10px; --radius-lg:14px;
+  }
+  body.light {
+    --bg-side:#ebedf3; --bg-app:#f7f8fb; --bg-card:#ffffff; --bg-hover:#eef0f6;
+    --bg-inset:#eef0f5; --line:#d9dce6; --line-soft:#e4e7ef;
+    --text:#1c1f2a; --text-dim:#3d4152; --muted:#6b7080;
+    --accent-soft:#7c3aed14;
+  }
   * { margin:0; padding:0; box-sizing:border-box; scrollbar-width:none; }
   *::-webkit-scrollbar { width:0; height:0; }
-  body { background:var(--bg); color:var(--text); font:15px/1.5 "Segoe UI",system-ui,sans-serif; }
-  header { display:flex; align-items:center; gap:12px; padding:16px 22px;
-           border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
-  .drag-zone { display:flex; align-items:center; gap:12px; flex:1; min-width:0; }
-  #win-controls { display:none; gap:4px; }
-  #win-controls button { background:none; border:none; color:var(--muted); font-size:15px;
-                         width:34px; height:30px; border-radius:7px; cursor:pointer; }
-  #win-controls button:hover { background:var(--panel2); color:var(--text); }
+  html, body { height:100%; }
+  body { background:var(--bg-app); color:var(--text);
+         font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+         display:grid; grid-template-columns:224px 1fr; grid-template-rows:100%; overflow:hidden; }
+
+  /* ── sidebar ─────────────────────────────────────────────── */
+  aside { background:var(--bg-side); border-right:1px solid var(--line-soft);
+          display:flex; flex-direction:column; min-height:0; }
+  .brand { display:flex; align-items:center; gap:10px; padding:18px 16px 14px; }
+  .brand .mark { width:30px; height:30px; border-radius:9px; background:var(--bg-card);
+                 display:grid; place-items:center; flex:none;
+                 box-shadow:inset 0 0 0 1px var(--line-soft); }
+  .brand .mark::after { content:""; width:13px; height:13px; border-radius:50%;
+                        border:3.5px solid var(--accent); }
+  .brand .word { font-size:14px; font-weight:700; letter-spacing:.14em; }
+  nav { padding:6px 10px; display:flex; flex-direction:column; gap:2px; }
+  nav a { display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:8px;
+          color:var(--muted); text-decoration:none; font-weight:500; font-size:13.5px;
+          transition:background .12s, color .12s; }
+  nav a svg { width:17px; height:17px; flex:none; }
+  nav a:hover { background:var(--bg-hover); color:var(--text-dim); }
+  nav a.active { background:var(--accent-soft); color:var(--accent2); }
+  nav a .navbadge { margin-left:auto; background:var(--accent); color:#fff;
+                    border-radius:99px; font-size:10.5px; font-weight:600; padding:1px 7px; }
+  .side-footer { margin-top:auto; padding:12px; }
+  .status-card { background:var(--bg-card); border:1px solid var(--line-soft);
+                 border-radius:var(--radius); padding:10px 12px; display:flex;
+                 align-items:center; gap:9px; }
+  .status-card .dot { width:9px; height:9px; border-radius:50%; background:var(--green); flex:none; }
+  .status-card.gaming .dot { background:var(--accent2); }
+  .status-card.focused .dot { background:var(--red); }
+  .status-card .lbl { min-width:0; }
+  .status-card .lbl b { display:block; font-size:12.5px; font-weight:600;
+                        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .status-card .lbl span { font-size:11px; color:var(--muted); }
+  .side-version { text-align:center; color:var(--muted); font-size:10.5px; padding-top:8px; }
+
+  /* ── topbar + content ────────────────────────────────────── */
+  .main { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .topbar { display:flex; align-items:center; gap:10px; height:48px; flex:none;
+            padding:0 10px 0 22px; border-bottom:1px solid var(--line-soft); }
+  .topbar h1 { font-size:15.5px; font-weight:600; letter-spacing:.01em; }
+  .topbar .crumb { color:var(--muted); font-weight:400; }
+  #win-controls { display:none; gap:2px; margin-left:auto; }
+  #win-controls button { background:none; border:none; color:var(--muted); font-size:14px;
+                         width:38px; height:32px; border-radius:7px; cursor:pointer; }
+  #win-controls button:hover { background:var(--bg-hover); color:var(--text); }
   #win-controls .close:hover { background:var(--red); color:#fff; }
-  .logo { width:26px; height:26px; border-radius:7px; background:var(--panel2);
-          display:grid; place-items:center; flex:none; }
-  .logo::after { content:""; width:12px; height:12px; border-radius:50%;
-                 border:3px solid var(--accent); }
-  h1 { font-size:16px; letter-spacing:.18em; }
-  #state-pill { border:1px solid var(--line); border-radius:99px;
-                padding:4px 14px; font-size:13px; color:var(--muted); white-space:nowrap; }
-  #state-pill.gaming { color:var(--accent2); border-color:var(--accent); }
-  nav { display:flex; gap:4px; padding:10px 18px 0; border-bottom:1px solid var(--line); }
-  nav a { background:none; border:none; color:var(--muted); font:inherit; text-decoration:none;
-          padding:10px 16px; cursor:pointer; border-bottom:2px solid transparent; }
-  nav a.active { color:var(--text); border-bottom-color:var(--accent); }
-  main { max-width:860px; margin:0 auto; padding:22px 18px 60px; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px;
-          padding:16px 18px; margin-bottom:12px; }
-  .card.click { cursor:pointer; transition:border-color .12s, transform .12s; }
-  .card.click:hover { border-color:var(--accent); transform:translateY(-1px); }
-  .row { display:flex; align-items:center; gap:10px; }
-  .muted { color:var(--muted); font-size:13px; }
-  .sub { color:var(--muted); font-size:13.5px; margin:-4px 0 16px; }
-  .chip { font-size:11px; padding:2px 9px; border-radius:99px; border:1px solid var(--line);
-          color:var(--muted); text-transform:uppercase; letter-spacing:.06em; flex:none; }
+  .content { overflow-y:auto; padding:22px 26px 64px; }
+  .content-inner { max-width:780px; margin:0 auto; }
+
+  /* ── shared components ───────────────────────────────────── */
+  .card { background:var(--bg-card); border:1px solid var(--line-soft);
+          border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; }
+  .card.click { cursor:pointer; transition:background .12s, border-color .12s; }
+  .card.click:hover { background:var(--bg-hover); border-color:var(--line); }
+  .row { display:flex; align-items:center; gap:12px; }
+  .muted { color:var(--muted); font-size:12.5px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 16px; }
+  .section-title { font-size:11px; letter-spacing:.09em; color:var(--muted); font-weight:600;
+                   text-transform:uppercase; margin:24px 0 10px; }
+  .section-title:first-child { margin-top:0; }
+  .section-title.urgent { color:var(--red); }
+  .section-title.action { color:var(--amber); }
+  .chip { font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:5px;
+          border:1px solid var(--line); color:var(--muted);
+          text-transform:uppercase; letter-spacing:.05em; flex:none; }
   .chip.urgent { color:#fff; background:var(--red); border-color:var(--red); }
-  .chip.actionable { color:#111; background:var(--amber); border-color:var(--amber); }
+  .chip.actionable { color:#241a00; background:var(--amber); border-color:var(--amber); }
   .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
   .dot.ok { background:var(--green); } .dot.warn { background:var(--amber); }
   .dot.off { background:var(--line); }
-  .btn { background:var(--accent); border:none; color:#fff; border-radius:8px;
-         padding:8px 16px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
-  .empty { text-align:center; color:var(--muted); padding:56px 16px; }
-  .empty .big { font-size:34px; margin-bottom:10px; }
-  table.settings { width:100%; border-collapse:collapse; }
-  table.settings td { padding:9px 4px; border-bottom:1px solid var(--line); font-size:14px; }
-  table.settings td:first-child { color:var(--muted); width:45%; }
-  .recap-game { font-size:17px; font-weight:600; }
-  .art { width:92px; height:43px; border-radius:8px; object-fit:cover; flex:none;
-         background:var(--panel2); }
-  .hero-art { width:100%; max-width:340px; border-radius:10px; margin-bottom:14px; display:block; }
-  .recap-duration { font-size:26px; font-weight:700; color:var(--accent2);
-                    margin-left:auto; flex:none; }
-  .back { color:var(--accent2); text-decoration:none; font-size:14px;
-          display:inline-block; margin-bottom:14px; }
-  .hero { background:linear-gradient(135deg, #221a3f, var(--panel)); border:1px solid var(--line);
-          border-radius:14px; padding:24px; margin-bottom:16px; }
-  .hero .game { font-size:22px; font-weight:700; }
-  .hero .dur { font-size:44px; font-weight:800; color:var(--accent2); line-height:1.15; }
-  .hero .meta { color:var(--muted); margin-top:6px; }
-  .stat-row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
-  .stat { background:#00000030; border:1px solid var(--line); border-radius:10px;
-          padding:10px 18px; text-align:center; }
-  .stat b { display:block; font-size:20px; }
-  .stat span { font-size:12px; color:var(--muted); }
-  .section-title { font-size:13px; letter-spacing:.14em; color:var(--muted);
-                   text-transform:uppercase; margin:22px 0 10px; }
-  .section-title.urgent { color:var(--red); }
-  .section-title.action { color:var(--amber); }
-  .filter-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
-  .fchip { background:var(--panel); border:1px solid var(--line); border-radius:99px;
-           padding:5px 14px; font-size:13px; color:var(--muted); cursor:pointer; }
-  .fchip.on { color:var(--text); border-color:var(--accent); }
-  .fchip b { color:var(--accent2); }
-  .readbtn { background:none; border:1px solid var(--line); color:var(--muted);
-             border-radius:7px; padding:5px 12px; font:inherit; font-size:13px;
-             cursor:pointer; margin-left:auto; flex:none; }
-  .readbtn:hover { border-color:var(--green); color:var(--green); }
-  .card.isread { opacity:.5; }
-  .undo-pill { background:var(--panel2); border:1px solid var(--accent); color:var(--accent2);
-               border-radius:99px; padding:5px 14px; font-size:13px; cursor:pointer; }
-  .navbadge { background:var(--accent); color:#fff; border-radius:99px; font-size:11px;
-              padding:1px 7px; margin-left:6px; }
-  body.light { --bg:#f4f5f9; --panel:#ffffff; --panel2:#eceef4; --line:#d8dbe6;
-               --text:#1d2029; --muted:#6a6e80; }
-  .setrow { display:flex; align-items:center; gap:12px; padding:13px 4px;
-            border-bottom:1px solid var(--line); }
-  .setrow:last-child { border-bottom:none; }
-  .setrow .lbl { flex:1; min-width:0; }
-  .setrow .lbl .muted { font-size:12.5px; }
-  .switch { width:44px; height:24px; border-radius:99px; background:var(--line);
-            position:relative; cursor:pointer; flex:none; transition:background .15s; }
-  .switch::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px;
-                   border-radius:50%; background:#fff; transition:left .15s; }
-  .switch.on { background:var(--accent); }
-  .switch.on::after { left:23px; }
-  .setinput { background:var(--panel2); border:1px solid var(--line); color:var(--text);
-              border-radius:8px; padding:8px 12px; font:inherit; width:100%; }
-  input.num { width:80px; text-align:center; }
-  .danger-zone { border-color:var(--red); }
+  .btn { background:var(--accent); border:none; color:#fff; border-radius:8px; height:32px;
+         padding:0 15px; font:inherit; font-size:13px; font-weight:600; cursor:pointer;
+         text-decoration:none; display:inline-flex; align-items:center; }
+  .btn:hover { filter:brightness(1.1); }
   .btn.danger { background:var(--red); }
   .btn.green { background:var(--green); }
-  .conn-actions { margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
+  .empty { text-align:center; color:var(--muted); padding:64px 16px; font-size:13.5px; }
+  .empty svg { width:36px; height:36px; margin-bottom:12px; opacity:.5; }
+
+  /* messages */
+  .filter-bar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  .fchip { background:var(--bg-card); border:1px solid var(--line-soft); border-radius:7px;
+           padding:6px 12px; font-size:12.5px; font-weight:500; color:var(--muted); cursor:pointer;
+           transition:background .12s, color .12s; }
+  .fchip:hover { background:var(--bg-hover); }
+  .fchip.on { color:var(--accent2); border-color:var(--accent); background:var(--accent-soft); }
+  .fchip b { color:var(--accent2); font-weight:600; }
+  .readbtn { background:none; border:1px solid var(--line); color:var(--muted);
+             border-radius:7px; height:28px; padding:0 11px; font:inherit; font-size:12px;
+             cursor:pointer; margin-left:auto; flex:none; transition:all .12s; }
+  .readbtn:hover { border-color:var(--green); color:var(--green); }
+  .undo-pill { background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent2);
+               border-radius:7px; padding:6px 12px; font-size:12.5px; cursor:pointer; }
+  .msg-title { font-size:13.5px; font-weight:500; }
+
+  /* recaps */
+  .recap-card { display:flex; align-items:center; gap:14px; padding:12px 14px; }
+  .art { width:106px; height:50px; border-radius:7px; object-fit:cover; flex:none;
+         background:var(--bg-inset); }
+  .recap-game { font-size:15px; font-weight:600; }
+  .recap-duration { font-size:21px; font-weight:700; color:var(--accent2);
+                    margin-left:auto; flex:none; font-variant-numeric:tabular-nums; }
+  .back { color:var(--muted); text-decoration:none; font-size:12.5px; font-weight:500;
+          display:inline-flex; align-items:center; gap:6px; margin-bottom:14px; }
+  .back:hover { color:var(--accent2); }
+  .hero { position:relative; border:1px solid var(--line-soft); border-radius:var(--radius-lg);
+          overflow:hidden; margin-bottom:16px; background:var(--bg-card); }
+  .hero-art-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+                 opacity:.28; filter:blur(2px) saturate(1.1); }
+  .hero-grad { position:absolute; inset:0;
+               background:linear-gradient(180deg, transparent, var(--bg-card) 88%); }
+  .hero-body { position:relative; padding:26px 24px 20px; }
+  .hero .game { font-size:19px; font-weight:700; }
+  .hero .dur { font-size:40px; font-weight:800; color:var(--accent2); line-height:1.15;
+               font-variant-numeric:tabular-nums; }
+  .hero .meta { color:var(--muted); margin-top:4px; font-size:12.5px; }
+  .stat-row { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
+  .stat { background:var(--bg-inset); border:1px solid var(--line-soft); border-radius:9px;
+          padding:9px 16px; text-align:center; min-width:86px; }
+  .stat b { display:block; font-size:18px; font-variant-numeric:tabular-nums; }
+  .stat span { font-size:10.5px; color:var(--muted); text-transform:uppercase;
+               letter-spacing:.05em; font-weight:600; }
+
+  /* connectors */
+  .conn-actions { margin-top:12px; padding-top:12px; border-top:1px solid var(--line-soft);
                   display:flex; gap:8px; }
-  .fab { position:fixed; right:22px; bottom:22px; background:var(--green); color:#fff;
-         border:none; border-radius:99px; padding:13px 22px; font:inherit; font-weight:600;
-         cursor:pointer; box-shadow:0 8px 24px #0008; z-index:9; }
+  .fab { position:fixed; right:26px; bottom:24px; background:var(--green); color:#fff;
+         border:none; border-radius:10px; height:40px; padding:0 18px; font:inherit;
+         font-size:13.5px; font-weight:600; cursor:pointer; box-shadow:0 10px 28px #0007; z-index:9;
+         display:inline-flex; align-items:center; gap:7px; }
+  .fab:hover { filter:brightness(1.08); }
   .catalog-overlay { position:fixed; inset:0; background:#000a; z-index:10;
                      display:grid; place-items:center; }
-  .catalog { background:var(--panel); border:1px solid var(--line); border-radius:14px;
-             padding:22px; width:min(440px, 92vw); }
-  .catalog h2 { font-size:17px; margin-bottom:14px; }
+  .catalog { background:var(--bg-card); border:1px solid var(--line); border-radius:var(--radius-lg);
+             padding:20px; width:min(440px, 92vw); }
+  .catalog h2 { font-size:15px; margin-bottom:12px; font-weight:600; }
+
+  /* settings */
+  .setrow { display:flex; align-items:center; gap:14px; padding:13px 2px;
+            border-bottom:1px solid var(--line-soft); }
+  .setrow:last-child { border-bottom:none; }
+  .setrow .lbl { flex:1; min-width:0; }
+  .setrow .lbl > div:first-child { font-size:13.5px; font-weight:500; }
+  .setrow .lbl .muted { font-size:12px; margin-top:1px; }
+  .switch { width:42px; height:23px; border-radius:99px; background:var(--line);
+            position:relative; cursor:pointer; flex:none; transition:background .15s; }
+  .switch::after { content:""; position:absolute; top:2.5px; left:3px; width:18px; height:18px;
+                   border-radius:50%; background:#fff; transition:left .15s;
+                   box-shadow:0 1px 3px #0006; }
+  .switch.on { background:var(--accent); }
+  .switch.on::after { left:21px; }
+  .setinput { background:var(--bg-inset); border:1px solid var(--line); color:var(--text);
+              border-radius:8px; padding:8px 12px; font:inherit; font-size:13px; width:100%; }
+  .setinput:focus { outline:none; border-color:var(--accent); }
+  input.num { width:74px; text-align:center; }
+  .danger-zone { border-color:color-mix(in srgb, var(--red) 45%, var(--line)); }
+
+  @media (max-width: 680px) {
+    body { grid-template-columns:64px 1fr; }
+    .brand .word, nav a .txt, nav a .navbadge, .side-footer { display:none; }
+    nav a { justify-content:center; padding:11px 0; }
+    .content { padding:16px 14px 64px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <div class="drag-zone pywebview-drag-region">
-    <div class="logo"></div><h1>GAMEGATE</h1>
-    <div id="state-pill" style="margin-left:auto">…</div>
+<aside>
+  <div class="brand pywebview-drag-region"><div class="mark"></div><div class="word">GAMEGATE</div></div>
+  <nav id="sidenav"></nav>
+  <div class="side-footer">
+    <div class="status-card" id="status-card">
+      <span class="dot"></span>
+      <div class="lbl"><b id="status-title">…</b><span id="status-sub">connecting</span></div>
+    </div>
+    <div class="side-version">GameGate v0.1</div>
   </div>
-  <div id="win-controls">
-    <button title="Minimize" onclick="pywebview.api.minimize()">—</button>
-    <button class="close" title="Close" onclick="pywebview.api.close()">✕</button>
+</aside>
+<div class="main">
+  <div class="topbar pywebview-drag-region">
+    <h1 id="page-title">Game Recaps</h1>
+    <div id="win-controls">
+      <button title="Minimize" onclick="pywebview.api.minimize()">—</button>
+      <button class="close" title="Close" onclick="pywebview.api.close()">✕</button>
+    </div>
   </div>
-</header>
-<nav>
-  <a href="#/recaps" data-route="recaps">Game Recaps</a>
-  <a href="#/messages" data-route="messages">Messages<span class="navbadge" id="msg-badge" hidden></span></a>
-  <a href="#/connections" data-route="connections">Connectors</a>
-  <a href="#/settings" data-route="settings">Settings</a>
-</nav>
-<main id="view"></main>
+  <div class="content"><div class="content-inner" id="view"></div></div>
+</div>
 <script>
+/* ── icon set (stroke, 24 viewbox) ─────────────────────────── */
+const I = {
+  recaps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4"/><circle cx="16" cy="12" r="1"/><circle cx="18.5" cy="9.5" r="1"/><path d="M17.3 5H6.7a4.7 4.7 0 0 0-4.6 4L1 16.2A2.8 2.8 0 0 0 3.8 19c.9 0 1.8-.4 2.3-1.2L8 15.5h8l1.9 2.3c.5.8 1.4 1.2 2.3 1.2a2.8 2.8 0 0 0 2.8-2.8L21.9 9a4.7 4.7 0 0 0-4.6-4z"/></svg>',
+  messages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/></svg>',
+  connectors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7 7 9a4.2 4.2 0 0 0 0 6l2 2 8-8-2-2a4.2 4.2 0 0 0-6 0zM15 17l2-2M7 9 5 7M12 20l-1.5 1.5M20 12l1.5-1.5M3.5 22 6 19.5"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>',
+  inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/></svg>',
+  gamepad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4"/><circle cx="16" cy="12" r="1"/><circle cx="18.5" cy="9.5" r="1"/><path d="M17.3 5H6.7a4.7 4.7 0 0 0-4.6 4L1 16.2A2.8 2.8 0 0 0 3.8 19c.9 0 1.8-.4 2.3-1.2L8 15.5h8l1.9 2.3c.5.8 1.4 1.2 2.3 1.2a2.8 2.8 0 0 0 2.8-2.8L21.9 9a4.7 4.7 0 0 0-4.6-4z"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="width:15px;height:15px"><path d="M12 5v14M5 12h14"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.9-.9L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>',
+};
+const SRCICON = { gmail: I.mail, discord: I.chat, slack: I.chat, system: "" };
+
+const NAVDEF = [
+  { route: "recaps", label: "Game Recaps", icon: I.recaps, title: "Game Recaps" },
+  { route: "messages", label: "Messages", icon: I.messages, title: "Messages" },
+  { route: "connections", label: "Connectors", icon: I.connectors, title: "Connectors" },
+  { route: "settings", label: "Settings", icon: I.settings, title: "Settings" },
+];
+
 const view = document.querySelector("#view");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
@@ -147,20 +241,25 @@ const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
   return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric"}); };
 const fmtDur = (s) => { const m = Math.floor(s/60), h = Math.floor(m/60);
   return h ? h+"h "+String(m%60).padStart(2,"0")+"m" : m+"m "+String(s%60).padStart(2,"0")+"s"; };
-const SRC = { gmail:"✉️", discord:"💬", slack:"#️⃣", system:"⚙️" };
-const art = (s, cls) => {
-  if (!s) return "";
-  if (s.app_id) return `<img class="${cls}" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg" onerror="this.remove()">`;
-  if (s.application) return `<img class="${cls}" src="/art?game=${encodeURIComponent(s.application)}" onerror="this.remove()">`;
-  return "";
-};
 
 let cache = { recaps: [], events: [], connections: null, status: null, userSettings: null };
+let msgFilter = "all";
+let msgView = "unread";
+let undoIds = null;
 if (localStorage.getItem("gg-theme") === "light") document.body.classList.add("light");
-let msgFilter = "all";      // source filter chip
-let msgView = "unread";     // 'unread' (importance sections) | 'read' (archive)
-let undoIds = null;         // ids from the last Read-all, for Undo
+
 async function j(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+function renderNav() {
+  const unread = cache.events.filter(e => !e.read_at).length;
+  const hash = location.hash || "#/recaps";
+  const current = hash.split("/")[1] === "recap" ? "recaps" : hash.split("/")[1];
+  document.querySelector("#sidenav").innerHTML = NAVDEF.map(n => `
+    <a href="#/${n.route}" class="${current === n.route ? "active" : ""}">
+      ${n.icon}<span class="txt">${n.label}</span>
+      ${n.route === "messages" && unread ? `<span class="navbadge">${unread}</span>` : ""}
+    </a>`).join("");
+}
 
 async function refresh() {
   try {
@@ -169,80 +268,90 @@ async function refresh() {
         j("/status"), j("/events?limit=100"), j("/digests?limit=20"),
         j("/connections"), j("/settings"),
       ]);
-    const pill = document.querySelector("#state-pill");
-    pill.textContent = cache.status.state === "gaming"
-      ? "🎮 gaming — " + (cache.status.application || "") : cache.status.state;
-    pill.className = cache.status.state === "gaming" ? "gaming" : "";
-    const unread = cache.events.filter(e => !e.read_at).length;
-    const badge = document.querySelector("#msg-badge");
-    badge.textContent = unread; badge.hidden = !unread;
-  } catch (e) { /* login expired — views show their own message */ }
+    const card = document.querySelector("#status-card");
+    const state = cache.status.state;
+    card.className = "status-card " + state;
+    document.querySelector("#status-title").textContent =
+      state === "gaming" ? (cache.status.application || "In game") : state === "focused" ? "Do Not Disturb" : "Available";
+    document.querySelector("#status-sub").textContent =
+      state === "gaming" ? "holding your messages" : state === "focused" ? "everything is held" : "delivering normally";
+    renderNav();
+  } catch (e) { /* session expired — views show their own message */ }
 }
 
 function recapCard(d) {
   const s = d.session || {};
   const actions = (d.action_required || []).length;
-  return `<div class="card click row" onclick="location.hash='#/recap/${esc(d.id)}'">
-    ${art(s, "art")}
+  const artEl = art(s, "art");
+  return `<div class="card click recap-card" onclick="location.hash='#/recap/${esc(d.id)}'">
+    ${artEl}
     <div style="min-width:0">
-      <div class="recap-game">${s.app_id ? "" : "🎮 "}${esc(s.application || "Session")}</div>
+      <div class="recap-game">${esc(s.application || "Session")}</div>
       <div class="muted">${ago(d.created_at)} · ${d.total_events} message${d.total_events===1?"":"s"}${actions ? ` · <span style="color:var(--amber)">${actions} need action</span>` : ""}</div>
     </div>
     <div class="recap-duration">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : ""}</div>
   </div>`;
 }
+const art = (s, cls) => {
+  if (!s) return "";
+  if (s.app_id) return `<img class="${cls}" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg" onerror="this.remove()">`;
+  if (s.application) return `<img class="${cls}" src="/art?game=${encodeURIComponent(s.application)}" onerror="this.remove()">`;
+  return "";
+};
 
 const views = {
   recaps() {
-    if (!cache.recaps.length) return `<div class="empty"><div class="big">🎮</div>
+    if (!cache.recaps.length) return `<div class="empty">${I.gamepad}<br>
       No recaps yet.<br>Finish a gaming session and your first Game Recap lands here.</div>`;
-    return `<div class="sub">Your session summaries — what happened while you played. Click one.</div>`
+    return `<div class="sub">Your session summaries — what happened while you played.</div>`
       + cache.recaps.map(recapCard).join("");
   },
   recap(id) {
     const d = cache.recaps.find(x => x.id === id);
-    if (!d) return `<a class="back" href="#/recaps">← All recaps</a><div class="empty">Recap not found.</div>`;
+    if (!d) return `<a class="back" href="#/recaps">${I.back} All recaps</a><div class="empty">Recap not found.</div>`;
     const s = d.session || {};
     const counts = d.counts_by_priority || {};
     const items = d.items || [];
     const actions = d.action_required || [];
-    return `<a class="back" href="#/recaps">← All recaps</a>
+    const bgArt = s.app_id
+      ? `<img class="hero-art-bg" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg" onerror="this.remove()">`
+      : (s.application ? `<img class="hero-art-bg" src="/art?game=${encodeURIComponent(s.application)}" onerror="this.remove()">` : "");
+    const msgCard = (i) => `
+      <div class="card row"><span class="chip ${esc(i.priority)}">${esc(i.priority)}</span>
+        <div style="min-width:0"><div class="msg-title">${esc(i.sender)} — ${esc(i.title)}</div>
+        <div class="muted">${SRCICON[i.source]||""} ${esc(i.source)} · ${ago(i.received_at)}</div></div></div>`;
+    return `<a class="back" href="#/recaps">${I.back} All recaps</a>
     <div class="hero">
-      ${art(s, "hero-art")}
-      <div class="game">${s.app_id ? "" : "🎮 "}${esc(s.application || "Session")}</div>
-      <div class="dur">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : "—"}</div>
-      <div class="meta">${s.started_at ? new Date(s.started_at).toLocaleString() : ""} · ${ago(d.created_at)}</div>
-      <div class="stat-row">
-        <div class="stat"><b>${d.total_events}</b><span>messages held</span></div>
-        <div class="stat"><b>${counts.urgent ?? 0}</b><span>urgent</span></div>
-        <div class="stat"><b>${counts.actionable ?? 0}</b><span>actionable</span></div>
-        <div class="stat"><b>${actions.length}</b><span>need action</span></div>
+      ${bgArt}<div class="hero-grad"></div>
+      <div class="hero-body">
+        <div class="game">${esc(s.application || "Session")}</div>
+        <div class="dur">${s.duration_seconds != null ? fmtDur(s.duration_seconds) : "—"}</div>
+        <div class="meta">${s.started_at ? new Date(s.started_at).toLocaleString() : ""} · ${ago(d.created_at)}</div>
+        <div class="stat-row">
+          <div class="stat"><b>${d.total_events}</b><span>held</span></div>
+          <div class="stat"><b>${counts.urgent ?? 0}</b><span>urgent</span></div>
+          <div class="stat"><b>${counts.actionable ?? 0}</b><span>actionable</span></div>
+          <div class="stat"><b>${actions.length}</b><span>need action</span></div>
+        </div>
       </div>
     </div>
-    ${actions.length ? `<div class="section-title">⚠ Needs your action</div>` + actions.map(i => `
-      <div class="card row"><span class="chip ${esc(i.priority)}">${esc(i.priority)}</span>
-        <div><div>${esc(i.sender)} — ${esc(i.title)}</div>
-        <div class="muted">${SRC[i.source]||""} ${esc(i.source)} · ${ago(i.received_at)}</div></div></div>`).join("") : ""}
+    ${actions.length ? `<div class="section-title action">Needs your action</div>` + actions.map(msgCard).join("") : ""}
     <div class="section-title">Everything from this session</div>
-    ${items.length ? items.map(i => `
-      <div class="card row"><span class="chip ${esc(i.priority)}">${esc(i.priority)}</span>
-        <div><div>${esc(i.sender)} — ${esc(i.title)}</div>
-        <div class="muted">${SRC[i.source]||""} ${esc(i.source)} · ${ago(i.received_at)}</div></div></div>`).join("")
-      : `<div class="empty">A quiet session — nothing came in.</div>`}`;
+    ${items.length ? items.map(msgCard).join("") : `<div class="empty">A quiet session — nothing came in.</div>`}`;
   },
   messages() {
     const all = cache.events;
     const sources = [...new Set(all.map(e => e.source))];
     const unreadBy = (src) => all.filter(e => !e.read_at && (src === "all" || e.source === src)).length;
+    const readCount = all.filter(e => e.read_at).length;
     const chips = ["all", ...sources].map(s => `
       <span class="fchip ${msgFilter === s ? "on" : ""}" onclick="msgFilter='${s}';route()">
-        ${s === "all" ? "All" : (SRC[s]||"") + " " + esc(s)} ${unreadBy(s) ? `<b>${unreadBy(s)}</b>` : ""}
+        ${s === "all" ? "All" : esc(s)} ${unreadBy(s) ? `<b>${unreadBy(s)}</b>` : ""}
       </span>`).join("");
-    const readCount = all.filter(e => e.read_at).length;
     const bar = `<div class="filter-bar">
       <span class="fchip ${msgView === "unread" ? "on" : ""}" onclick="msgView='unread';route()">Unread</span>
       <span class="fchip ${msgView === "read" ? "on" : ""}" onclick="msgView='read';route()">Read ${readCount ? `<b>${readCount}</b>` : ""}</span>
-      <span style="width:14px"></span>${chips}
+      <span style="width:10px"></span>${chips}
       <span style="margin-left:auto"></span>
       ${msgView === "unread" ? (undoIds ? `<span class="undo-pill" onclick="undoReadAll()">↩ Undo read all</span>`
                 : `<span class="fchip" onclick="readAll()">Read all</span>`) : ""}
@@ -250,28 +359,24 @@ const views = {
 
     let shown = all.filter(e => msgFilter === "all" || e.source === msgFilter);
     shown = shown.filter(e => msgView === "read" ? e.read_at : !e.read_at);
-    if (!shown.length) return bar + `<div class="empty"><div class="big">${msgView === "read" ? "📖" : "📥"}</div>
+    if (!shown.length) return bar + `<div class="empty">${I.inbox}<br>
       ${msgView === "read" ? "Nothing read yet." : "All caught up — nothing unread."}</div>`;
 
     const card = (e) => `
       <div class="card row">
         <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
-        <div style="min-width:0"><div>${esc(e.sender)} — ${esc(e.title)}</div>
-        <div class="muted">${SRC[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div>
+        <div style="min-width:0"><div class="msg-title">${esc(e.sender)} — ${esc(e.title)}</div>
+        <div class="muted">${SRCICON[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div>
         ${e.read_at
           ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
           : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
       </div>`;
-    if (msgView === "read") {
-      // the archive: flat, newest first — read stuff never crowds importance
-      return bar + shown.map(card).join("");
-    }
+    if (msgView === "read") return bar + shown.map(card).join("");
     const section = (title, cls, items) => items.length
       ? `<div class="section-title ${cls}">${title}</div>` + items.map(card).join("") : "";
-
     return bar
-      + section("🔴 Urgent", "urgent", shown.filter(e => e.priority === "urgent"))
-      + section("🟡 Needs action", "action", shown.filter(e => e.priority === "actionable"))
+      + section("Urgent", "urgent", shown.filter(e => e.priority === "urgent"))
+      + section("Needs action", "action", shown.filter(e => e.priority === "actionable"))
       + section("Everything else", "", shown.filter(e => !["urgent","actionable"].includes(e.priority)));
   },
   connections() {
@@ -281,7 +386,7 @@ const views = {
       <div class="card click" onclick="toggleConn('${id}')">
         <div class="row">
           <span class="dot ${s.state === "connected" ? "ok" : s.state === "needs setup" ? "warn" : "off"}"></span>
-          <div><div>${name}</div><div class="muted">${esc(s.detail)}</div></div>
+          <div><div style="font-weight:600;font-size:13.5px">${name}</div><div class="muted">${esc(s.detail)}</div></div>
           ${s.action ? `<a class="btn" style="margin-left:auto" href="${s.action.href}" onclick="event.stopPropagation()">${esc(s.action.label)}</a>` : ""}
         </div>
         <div class="conn-actions" id="acts-${id}" hidden>
@@ -293,7 +398,7 @@ const views = {
     return `<div class="sub">Click a connector to manage it.</div>`
       + conn("discord", "Discord", c.discord) + conn("gmail", "Gmail", c.gmail)
       + conn("slack", "Slack", c.slack) + conn("classifier", "AI classifier", c.classifier)
-      + `<button class="fab" onclick="showCatalog()">＋ Add a connector</button>`;
+      + `<button class="fab" onclick="showCatalog()">${I.plus} Add a connector</button>`;
   },
   settings() {
     const s = cache.userSettings;
@@ -344,14 +449,6 @@ const views = {
     </div>`;
   },
 };
-
-function route() {
-  const hash = location.hash || "#/recaps";
-  const [, name, arg] = hash.split("/");
-  document.querySelectorAll("nav a").forEach(a =>
-    a.classList.toggle("active", a.dataset.route === (name === "recap" ? "recaps" : name)));
-  view.innerHTML = (views[name] || views.recaps)(arg);
-}
 
 async function setSetting(key, value) {
   const r = await fetch("/settings", { method: "PUT",
@@ -416,10 +513,22 @@ function showCatalog() {
   overlay.innerHTML = `<div class="catalog"><h2>Add a connector</h2>` +
     (c ? c.catalog.map(item => `
       <div class="card click row" onclick="this.closest('.catalog-overlay').remove();connAction('${item.id}','connect')">
-        <div><div>${esc(item.name)}</div><div class="muted">${esc(item.desc)}</div></div>
+        <div><div style="font-weight:600">${esc(item.name)}</div><div class="muted">${esc(item.desc)}</div></div>
       </div>`).join("") : "") + `</div>`;
   document.body.appendChild(overlay);
 }
+
+function route() {
+  const hash = location.hash || "#/recaps";
+  const [, name, arg] = hash.split("/");
+  const def = NAVDEF.find(n => n.route === (name === "recap" ? "recaps" : name)) || NAVDEF[0];
+  document.querySelector("#page-title").innerHTML = name === "recap"
+    ? `<span class="crumb">Game Recaps /</span> Recap`
+    : def.title;
+  renderNav();
+  view.innerHTML = (views[name] || views.recaps)(arg);
+}
+
 window.addEventListener("hashchange", route);
 window.addEventListener("pywebviewready", () => {
   document.querySelector("#win-controls").style.display = "flex";
@@ -427,7 +536,6 @@ window.addEventListener("pywebviewready", () => {
 (async () => { await refresh(); route(); })();
 setInterval(async () => {
   await refresh();
-  // don't stomp a recap the user is reading — only re-render list views
   if (!location.hash.startsWith("#/recap/")) route();
 }, 15000);
 </script>
