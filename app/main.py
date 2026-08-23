@@ -8,6 +8,7 @@ from app import db as db_module
 from app.api.classify import router as classify_router
 from app.api.digest import router as digest_router
 from app.api.events import router as events_router
+from app.api.gmail_oauth import router as gmail_oauth_router
 from app.api.status import router as status_router
 from app.config import get_settings
 
@@ -30,6 +31,7 @@ app.include_router(status_router)
 app.include_router(events_router)
 app.include_router(digest_router)
 app.include_router(classify_router)
+app.include_router(gmail_oauth_router)
 
 
 class HealthResponse(BaseModel):
