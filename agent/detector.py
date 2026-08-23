@@ -140,12 +140,62 @@ def steam_game_identity(exe_path: str) -> tuple[str, str] | None:
     return None
 
 
+def epic_game_identity(exe_path: str, manifests_dir: str | None = None) -> str | None:
+    """Real title from Epic's launcher manifests (*.item JSON files):
+    match the exe path against each manifest's InstallLocation."""
+    import json as jsonlib
+    import os as _os
+    from pathlib import Path as P
+
+    base = P(
+        manifests_dir
+        or _os.path.join(
+            _os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+            "Epic", "EpicGamesLauncher", "Data", "Manifests",
+        )
+    )
+    try:
+        for item in base.glob("*.item"):
+            data = jsonlib.loads(item.read_text(errors="ignore"))
+            location = str(data.get("InstallLocation", "")).lower().rstrip("\\/")
+            if location and exe_path.lower().startswith(location):
+                return data.get("DisplayName") or None
+    except OSError:
+        return None
+    return None
+
+
+def gog_game_identity(exe_path: str) -> str | None:
+    """Real title from GOG's goggame-*.info JSON sitting in the game folder."""
+    import json as jsonlib
+    from pathlib import Path as P
+
+    folder = P(exe_path).parent
+    try:
+        for _ in range(3):  # exe may sit a couple of levels deep
+            for info in folder.glob("goggame-*.info"):
+                name = jsonlib.loads(info.read_text(errors="ignore")).get("name")
+                if name:
+                    return name
+            folder = folder.parent
+    except OSError:
+        return None
+    return None
+
+
 def resolve_display(game: str, processes: dict[str, str]) -> tuple[str, str | None]:
-    """Human name + optional Steam appid for the detected game label."""
+    """Human name + optional Steam appid for the detected game label.
+    Name resolution order: Steam manifest → Epic manifest → GOG info →
+    prettified exe. Artwork id only exists for Steam titles."""
     exe_path = processes.get(game, "")
-    identity = steam_game_identity(exe_path) if exe_path else None
-    if identity:
-        return identity[0], identity[1] or None
+    if exe_path:
+        identity = steam_game_identity(exe_path)
+        if identity:
+            return identity[0], identity[1] or None
+        for resolver in (epic_game_identity, gog_game_identity):
+            name = resolver(exe_path)
+            if name:
+                return name, None
     if game.startswith("steam-app-"):
         return game, game.removeprefix("steam-app-")
     return prettify_exe(game), None

@@ -199,3 +199,33 @@ def test_prettify_fallback_for_non_steam_games():
     assert prettify_exe("fortniteclient-win64-shipping.exe") == "Fortnite"
     name, app_id = resolve_display("myindiegame.exe", {"myindiegame.exe": r"d:\games\myindiegame.exe"})
     assert name == "Myindiegame" and app_id is None
+
+
+def test_epic_identity_from_item_manifest(tmp_path):
+    import json as jsonlib
+
+    from detector import epic_game_identity
+
+    install = tmp_path / "Epic Games" / "Fortnite"
+    install.mkdir(parents=True)
+    manifests = tmp_path / "Manifests"
+    manifests.mkdir()
+    (manifests / "abc.item").write_text(jsonlib.dumps(
+        {"DisplayName": "Fortnite", "InstallLocation": str(install)}
+    ))
+    exe = str(install / "FortniteClient-Win64-Shipping.exe")
+    assert epic_game_identity(exe, str(manifests)) == "Fortnite"
+    assert epic_game_identity(str(tmp_path / "elsewhere" / "x.exe"), str(manifests)) is None
+
+
+def test_gog_identity_from_info_file(tmp_path):
+    import json as jsonlib
+
+    from detector import gog_game_identity
+
+    game_dir = tmp_path / "GOG" / "Cyberpunk 2077" / "bin" / "x64"
+    game_dir.mkdir(parents=True)
+    (tmp_path / "GOG" / "Cyberpunk 2077" / "goggame-1423049311.info").write_text(
+        jsonlib.dumps({"name": "Cyberpunk 2077"})
+    )
+    assert gog_game_identity(str(game_dir / "Cyberpunk2077.exe")) == "Cyberpunk 2077"
