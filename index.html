@@ -103,7 +103,7 @@
   @keyframes prog { 8% { width:calc(100% - 26px); } 60% { width:0; } 100% { width:0; } }
 
   /* sections */
-  section { padding:70px 0; border-top:1px solid var(--line-soft); }
+  section { padding:70px 0; border-top:1px solid var(--line-soft); scroll-margin-top:72px; }
   .eyebrow { color:var(--green); font-size:13px; font-weight:700; letter-spacing:.12em;
              text-transform:uppercase; }
   h2 { font-size:clamp(28px,3.4vw,38px); letter-spacing:-.02em; margin:10px 0 8px; }
@@ -304,6 +304,18 @@
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
   }, { threshold: 0.15 });
   document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+  // Guaranteed smooth scroll for nav links (some engines ignore CSS smooth).
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener("click", (e) => {
+      const target = document.querySelector(a.getAttribute("href"));
+      if (!target) return;
+      e.preventDefault();
+      const y = target.getBoundingClientRect().top + window.scrollY - 62;
+      window.scrollTo({ top: y, behavior: "smooth" });
+      history.replaceState(null, "", a.getAttribute("href"));
+    });
+  });
 </script>
 </body>
 </html>
