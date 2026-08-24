@@ -470,6 +470,13 @@ def run_tray() -> None:
             try:
                 count = checker.pending_changes()
                 if count > 0:
+                    # Never interrupt a game with an update prompt — that's the
+                    # exact thing GameGate exists to prevent (M22). Wait for a
+                    # non-gaming moment.
+                    status = api.get_status()
+                    if status and status.get("state") == "gaming":
+                        stop.wait(1800)  # re-check in 30 min
+                        continue
                     wants_update = show_update_prompt(count)
                     if wants_update and launch_updater():
                         stop.set()

@@ -274,6 +274,7 @@ class Detector:
         self.api = api_client
         self.steam_app_id_reader = steam_app_id_reader
         self.last_reported_state: str | None = None
+        self.last_reported_game: str | None = None
         self.game_started_at: str | None = None
 
     def poll_once(self) -> None:
@@ -287,19 +288,28 @@ class Detector:
         )
         desired_state = "gaming" if active_game else "available"
 
-        if desired_state == self.last_reported_state:
-            return  # no transition, no traffic
-
         if desired_state == "gaming":
-            started_at = datetime.now(UTC).isoformat()
             display_name, app_id = resolve_display(active_game, processes)
+            # Report on a game CHANGE too, not just available->gaming, so
+            # switching titles mid-session opens a fresh session and recap
+            # instead of staying attributed to the first game all night (M7).
+            if (
+                self.last_reported_state == "gaming"
+                and display_name == self.last_reported_game
+            ):
+                return  # same game still running, no traffic
+            started_at = datetime.now(UTC).isoformat()
             if self.api.post_status("gaming", display_name, started_at, app_id):
                 self.last_reported_state = "gaming"
+                self.last_reported_game = display_name
                 self.game_started_at = started_at
                 log.info("Transition -> GAMING (%s)", display_name)
         else:
+            if desired_state == self.last_reported_state:
+                return  # already available, no traffic
             if self.api.post_status("available", None, None):
                 self.last_reported_state = "available"
+                self.last_reported_game = None
                 self.game_started_at = None
                 log.info("Transition -> AVAILABLE")
 

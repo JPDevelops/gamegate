@@ -1,41 +1,29 @@
-"""Gmail connector with fakes — the runbook's deterministic rules, proven."""
+"""Gmail connector with fakes — the connector's deterministic rules. VIP-sender
+handling lives server-side now (see test_ingest_vip), so the connector no
+longer carries a VIP list (M14)."""
 from app.integrations.gmail_connector import (
     GmailPoller,
     classify_email,
     normalize_email,
 )
 
-VIPS = ("boss@company.com",)
-
-
-def test_vip_sender_is_urgent():
-    assert classify_email("Boss <boss@company.com>", "quick question", "", VIPS) == "urgent"
-
 
 def test_order_problem_is_actionable():
     assert (
-        classify_email("customer@x.com", "My order has not arrived", "", VIPS)
+        classify_email("customer@x.com", "My order has not arrived", "")
         == "actionable"
     )
 
 
 def test_newsletter_is_ignored():
     assert (
-        classify_email("news@no-reply.shop.com", "Weekly deals", "unsubscribe here", VIPS)
+        classify_email("news@no-reply.shop.com", "Weekly deals", "unsubscribe here")
         == "ignore"
     )
 
 
 def test_default_is_informational():
-    assert classify_email("friend@x.com", "lunch tomorrow?", "", VIPS) == "informational"
-
-
-def test_vip_beats_newsletter_markers():
-    # Rule order matters: a VIP hitting newsletter words is still urgent.
-    assert (
-        classify_email("boss@company.com", "newsletter draft", "unsubscribe", VIPS)
-        == "urgent"
-    )
+    assert classify_email("friend@x.com", "lunch tomorrow?", "") == "informational"
 
 
 def make_message(**overrides):
@@ -51,7 +39,7 @@ def make_message(**overrides):
 
 
 def test_normalize_email_shape():
-    payload = normalize_email(make_message(), VIPS)
+    payload = normalize_email(make_message())
     assert payload["source"] == "gmail"
     assert payload["external_id"] == "gm-1"
     assert payload["priority"] == "actionable"
@@ -83,18 +71,18 @@ class FakeApi:
 
 
 def test_poll_once_ingests_all_messages():
-    poller = GmailPoller(FakeGmail([make_message(), make_message(id="gm-2")]), FakeApi(), VIPS)
+    poller = GmailPoller(FakeGmail([make_message(), make_message(id="gm-2")]), FakeApi())
     assert poller.poll_once() == 2
 
 
 def test_gmail_outage_returns_zero_and_does_not_crash():
-    poller = GmailPoller(FakeGmail(explode=True), FakeApi(), VIPS)
+    poller = GmailPoller(FakeGmail(explode=True), FakeApi())
     assert poller.poll_once() == 0
 
 
 def test_repolling_same_message_is_idempotent_end_to_end(client):
     """Full stack: same Gmail id polled twice → stored once."""
-    payload = normalize_email(make_message(), VIPS)
+    payload = normalize_email(make_message())
     assert client.post("/events", json=payload).status_code == 201
     assert client.post("/events", json=payload).status_code == 200
     assert len(client.get("/events").json()) == 1

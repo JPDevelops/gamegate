@@ -74,9 +74,19 @@ $stamp = Get-Date -Format "MMM d HH:mm"
 "{`"build`": `"$hash`", `"built`": `"$stamp`"}" | Out-File -Encoding utf8 build_info.json
 
 Step 45 "Building (about 30 seconds)..."
-if (Test-Path "dist\GameGate.exe") { Remove-Item "dist\GameGate.exe" -Force }
+# Keep the working exe as a backup instead of deleting it up front, so a failed
+# build rolls back to the previous version instead of leaving no app at all.
+$backup = "dist\GameGate.exe.bak"
+if (Test-Path "dist\GameGate.exe") {
+  if (Test-Path $backup) { Remove-Item $backup -Force }
+  Rename-Item "dist\GameGate.exe" $backup
+}
 python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py *>> $log
-if (-not (Test-Path "dist\GameGate.exe")) { Fail "build failed" }
+if (-not (Test-Path "dist\GameGate.exe")) {
+  if (Test-Path $backup) { Rename-Item $backup "dist\GameGate.exe" }
+  Fail "build failed (previous version restored)"
+}
+if (Test-Path $backup) { Remove-Item $backup -Force }
 
 Step 90 "Finishing up..."
 if (Test-Path "config.json") { Copy-Item "config.json" "dist\" -Force }

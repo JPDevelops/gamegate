@@ -29,3 +29,13 @@ def test_state_only_update_clears_application(client):
     body = client.get("/status").json()
     assert body["state"] == "available"
     assert body["application"] is None
+
+
+def test_switching_games_mid_session_makes_a_separate_recap(client):
+    """Quit one game and start another without going available: each game gets
+    its own session and digest, not one merged recap (M7)."""
+    client.post("/status", json={"state": "gaming", "application": "helldivers2.exe"})
+    client.post("/status", json={"state": "gaming", "application": "fortnite.exe"})  # switch
+    client.post("/status", json={"state": "available"})
+    digests = client.get("/digests").json()
+    assert len(digests) == 2  # one recap per game, not a single merged one
