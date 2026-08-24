@@ -45,21 +45,31 @@ rendered at most once (tracked in memory); across a restart, a rare duplicate is
 possible. An item that fails to show/ack repeatedly is dropped from the client
 after a few attempts (it stays on the server) rather than looping forever.
 
-## Capture ALL Windows notifications (catch-all, opt-in)
+## Capture ALL Windows notifications (catch-all, opt-in) — needs app packaging
 
 GameGate can read **every** notification Windows shows — Discord, Slack, email,
 anything — and route them through the same hold / prioritize / recap engine as
 the built-in connectors. This is the honest way to "manage all my notifications"
 without a Discord self-bot (which violates Discord's ToS): it reads at the OS
-level via the Windows `UserNotificationListener` API, with your permission.
+level via the Windows `UserNotificationListener` API.
 
-**Enable it:**
-1. Windows: Settings → Privacy & security → Notifications → allow apps to access
-   notifications (and grant GameGate when it prompts on first run).
-2. In `config.json` set `"capture_windows_notifications": true`.
-3. Restart GameGate. Captured notifications flow in as events (source `discord`/
-   `slack`/`gmail`/`system`); GameGate's OWN pop-ups are skipped so it never
-   loops on itself.
+**Known limitation (important): this does not work from a bare `.exe`.** Windows
+only grants notification-*read* access to an app with a real **app identity** —
+a packaged/installed app (MSIX, or a registered AppUserModelID with a Start-Menu
+shortcut). A loose PyInstaller `GameGate.exe` has no such identity, so it never
+appears in Settings → Privacy & security → Notifications and the OS won't grant
+the permission. The capture code is complete and correct; it stays inert until
+GameGate is shipped as a **registered/installed app**. That packaging is the real
+remaining work for this feature (see ROADMAP).
+
+**Enable it (once GameGate is a packaged/registered app):**
+1. First launch shows a consent dialog; choosing "Yes" flips the setting on and
+   triggers Windows' own "allow GameGate to access notifications?" prompt — allow
+   it. (Or set `"capture_windows_notifications": true` in `config.json`.)
+2. Captured notifications flow in as events (source `discord`/`slack`/`gmail`/
+   `system`); GameGate's OWN pop-ups are skipped so it never loops on itself.
+3. To turn it off later: Settings → Privacy & security → Notifications → remove
+   GameGate's access.
 
 **To actually silence the interruptions** (so GameGate becomes your single
 "gate"), turn on Windows **Focus Assist** while gaming — Windows goes quiet and
