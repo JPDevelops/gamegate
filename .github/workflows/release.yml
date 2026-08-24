@@ -1,0 +1,42 @@
+name: Build Windows release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller psutil pystray pillow pywebview
+        working-directory: agent
+      - name: Stamp build
+        shell: pwsh
+        run: |
+          $hash = git rev-parse --short HEAD
+          $stamp = Get-Date -Format "MMM d HH:mm"
+          "{`"build`": `"$hash`", `"built`": `"$stamp`"}" | Out-File -Encoding ascii agent/build_info.json
+      - name: Build GameGate.exe
+        run: pyinstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py
+        working-directory: agent
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameGate-exe
+          path: agent/dist/GameGate.exe
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: agent/dist/GameGate.exe
