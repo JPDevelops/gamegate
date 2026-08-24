@@ -24,7 +24,12 @@ class EventRepository:
         event = Event(**incoming.model_dump())
         if decision is not None:
             event.metadata["routing"] = decision
-        consumed = decision in ("deliver_now", "suppress")
+        # Only 'suppress' is consumed at insert. A deliver-now event is NOT
+        # marked consumed here: the caller queues its notification and then
+        # calls mark_consumed(), so a crash between the two writes leaves the
+        # event delivered=0 and it surfaces in the digest — a possible
+        # duplicate, never a lost message (M6).
+        consumed = decision == "suppress"
         conn = self.db.connection()
         # ON CONFLICT DO NOTHING makes concurrent duplicate posts race-safe:
         # whoever loses the race gets rowcount 0 and returns the stored
@@ -56,6 +61,20 @@ class EventRepository:
             (source, external_id),
         ).fetchone()
         return self._to_event(row) if row else None
+
+    def find_by_id(self, event_id: str) -> Event | None:
+        """Direct primary-key lookup — no scanning the recent window (M5)."""
+        row = self.db.connection().execute(
+            "SELECT * FROM events WHERE id = ?", (event_id,)
+        ).fetchone()
+        return self._to_event(row) if row else None
+
+    def mark_consumed(self, event_id: str) -> None:
+        """Mark a delivered-now event consumed so it won't re-appear in a
+        digest. Called only after its notification row exists (M6)."""
+        conn = self.db.connection()
+        with conn:
+            conn.execute("UPDATE events SET delivered = 1 WHERE id = ?", (event_id,))
 
     def recent(self, limit: int = 50) -> list[Event]:
         rows = self.db.connection().execute(

@@ -7,6 +7,7 @@ dependencies = [
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",
     "httpx>=0.28",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]

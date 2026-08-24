@@ -8,11 +8,16 @@ from app.services.repositories import (
     SessionRepository,
     StatusRepository,
 )
+from app.services.settings_service import SettingsService
 from app.services.status_service import StatusService
 
 
 def get_event_repo() -> EventRepository:
     return EventRepository(get_database())
+
+
+def get_settings_service() -> SettingsService:
+    return SettingsService(get_database())
 
 
 def get_status_service() -> StatusService:

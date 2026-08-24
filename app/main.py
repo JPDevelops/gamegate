@@ -22,10 +22,15 @@ from app.middleware import AuthRateLimitMiddleware, SecurityHeadersMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    # Fail closed (Nebula audit #3): production must never run unauthenticated.
-    if settings.env == "production" and not settings.api_token:
+    # Fail closed: refuse to start unauthenticated unless the operator has
+    # EXPLICITLY opted into open dev mode with GAMEGATE_ENV=development. An
+    # unset token with an unset/other env is the accidental-open case the
+    # docs' `cp .env.example .env` path used to produce silently — now it
+    # stops the server instead of serving every endpoint without auth.
+    if not settings.api_token and not settings.explicit_dev:
         raise RuntimeError(
-            "GAMEGATE_API_TOKEN is required when GAMEGATE_ENV=production"
+            "GAMEGATE_API_TOKEN is required. To run without auth locally, set "
+            "GAMEGATE_ENV=development explicitly."
         )
     if db_module._database is None:
         db_module.init_database(settings.db_path)
@@ -35,8 +40,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="GameGate", version=__version__, lifespan=lifespan)
-app.add_middleware(SecurityHeadersMiddleware)
+# Order matters: Starlette makes the LAST-added middleware outermost, so add
+# the rate limiter FIRST and the header middleware LAST. That way the header
+# middleware wraps everything — including the rate limiter's early 429 — so
+# even throttled responses carry CSP/nosniff/Cache-Control (M11).
 app.add_middleware(AuthRateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.exception_handler(RecursionError)

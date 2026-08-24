@@ -20,7 +20,7 @@ ClassifierDep = Annotated[SafeClassifier, Depends(build_classifier)]
 def classify_event(
     event_id: str, repo: EventRepoDep, classifier: ClassifierDep
 ) -> Classification:
-    event = next((e for e in repo.recent(limit=1000) if e.id == event_id), None)
+    event = repo.find_by_id(event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Unknown event")
     return classifier.classify(event)
