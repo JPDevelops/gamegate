@@ -33,7 +33,7 @@ def lookup_art(game: str, client: httpx.Client, api_key: str) -> str:
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         search = client.get(
-            f"{API_BASE}/search/autocomplete/{quote(game)}", headers=headers
+            f"{API_BASE}/search/autocomplete/{quote(game, safe='')}", headers=headers
         )
         search.raise_for_status()
         results = search.json().get("data", [])

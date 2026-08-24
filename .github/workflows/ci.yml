@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege: CI only needs to read the checked-out code. Denies a
+# compromised dependency/action the write scope to push commits or releases.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -40,7 +40,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
+        # Authenticated responses may carry personal data (messages, digests) or
+        # the token itself (in the /app?key= URL). Forbid shared/proxy/disk
+        # caching for any request that presented credentials; the public
+        # marketing site and static assets stay cacheable.
+        if _is_authenticated(request):
+            response.headers["Cache-Control"] = "no-store"
         return response
+
+
+def _is_authenticated(request: Request) -> bool:
+    return bool(
+        request.headers.get("x-gamegate-token")
+        or request.cookies.get("gamegate_token")
+        or request.query_params.get("key")
+    )
 
 
 _failures: dict[str, deque] = defaultdict(deque)
