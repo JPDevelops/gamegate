@@ -48,3 +48,19 @@ def test_gaming_session_opened_and_closed(client):
     # A second non-gaming update must not close or create anything.
     client.post("/status", json={"state": "focused"})
     assert conn.execute("SELECT COUNT(*) c FROM sessions").fetchone()["c"] == 1
+
+
+def test_only_one_session_open_and_one_close_wins(client):
+    """Race fix: a second concurrent open is a no-op, and only the first close
+    returns the session (so only one digest is ever built)."""
+    from app import db as db_module
+    from app.services.repositories import SessionRepository
+
+    repo = SessionRepository(db_module.get_database())
+    s1 = repo.open("Game", None)
+    s2 = repo.open("Game", None)          # second open must be refused
+    assert s1 is not None and s2 is None
+
+    first = repo.close_current()
+    second = repo.close_current()          # second close must lose the race
+    assert first is not None and second is None

@@ -60,3 +60,21 @@ def test_deeply_nested_json_is_400_not_500(client):
     nested = "{\"a\":" * 3000 + "1" + "}" * 3000
     r = client.post("/events", data=nested, headers={"Content-Type": "application/json"})
     assert r.status_code in (400, 422)  # clean client error, never 500
+
+
+def test_non_ascii_token_raises_401_not_crash(monkeypatch):
+    """Server receives header bytes as latin-1; a non-ASCII token must yield a
+    clean 401, never crash compare_digest (the round-3 finding)."""
+    import pytest
+    from fastapi import HTTPException
+
+    from app.config import get_settings
+    from app.security import require_api_token
+
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "secret")
+    get_settings.cache_clear()
+    for bad in ["caf\u00e9", "\U0001f600", "\u202e", "guess"]:
+        with pytest.raises(HTTPException) as exc:
+            require_api_token(x_gamegate_token=bad, gamegate_token=None)
+        assert exc.value.status_code == 401
+    get_settings.cache_clear()
