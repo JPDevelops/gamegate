@@ -13,6 +13,24 @@ def test_defaults_and_roundtrip(client):
     assert updated["version"] > s["version"]
 
 
+def test_version_only_bumps_on_a_real_change(client):
+    """MINOR #16: the version is a client cache-buster, so a PUT of {} or of the
+    values already stored must NOT bump it — only a genuine change does."""
+    v0 = client.get("/settings").json()["version"]
+    # no-op: empty change
+    assert client.put("/settings", json={}).json()["version"] == v0
+    # no-op: same value as current
+    current_dur = client.get("/settings").json()["overlay_duration_s"]
+    assert client.put(
+        "/settings", json={"overlay_duration_s": current_dur}).json()["version"] == v0
+    # real change bumps
+    v1 = client.put("/settings", json={"overlay_duration_s": current_dur + 1}).json()["version"]
+    assert v1 > v0
+    # repeating that same new value is again a no-op
+    assert client.put(
+        "/settings", json={"overlay_duration_s": current_dur + 1}).json()["version"] == v1
+
+
 def test_validation_rejects_bad_values(client):
     assert client.put("/settings", json={"overlay_duration_s": 99}).status_code == 422
     assert client.put("/settings", json={"urgent_breakthrough": "yes"}).status_code == 422

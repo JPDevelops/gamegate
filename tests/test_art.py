@@ -35,8 +35,10 @@ def test_art_lookup_redirects_and_caches(client, monkeypatch):
 
 def test_art_miss_is_negative_cached(client, monkeypatch):
     monkeypatch.setenv("STEAMGRIDDB_API_KEY", "k")
+    calls = {"n": 0}
 
     def handler(request):
+        calls["n"] += 1  # count provider hits so the cache claim is actually proven
         return httpx.Response(200, json={"data": []})
 
     monkeypatch.setattr(
@@ -44,4 +46,9 @@ def test_art_miss_is_negative_cached(client, monkeypatch):
         lambda: httpx.Client(transport=httpx.MockTransport(handler)),
     )
     assert client.get("/art", params={"game": "ObscureGame"}, follow_redirects=False).status_code == 404
+    first_calls = calls["n"]
+    assert first_calls >= 1  # the first miss did hit the provider
     assert client.get("/art", params={"game": "ObscureGame"}, follow_redirects=False).status_code == 404
+    # The negative result is cached: the second request must NOT ask the provider
+    # again. Without counting calls this test would pass even if it re-queried.
+    assert calls["n"] == first_calls

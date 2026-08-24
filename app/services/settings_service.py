@@ -49,9 +49,18 @@ class SettingsService:
             if key not in DEFS:
                 raise ValueError(f"Unknown setting {key!r}")
             validated[key] = self._validate(key, value)
+        # Only persist and bump the version for values that ACTUALLY differ from
+        # what's stored (review MINOR #16): the version is a client cache-buster,
+        # so a PUT of {} or of the current values must be a no-op, not a bump.
+        current = self.get_all()
+        actually_changed = {
+            key: value for key, value in validated.items() if current.get(key) != value
+        }
+        if not actually_changed:
+            return current
         conn = self.db.connection()
         with conn:
-            for key, value in validated.items():
+            for key, value in actually_changed.items():
                 conn.execute(
                     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                     (key, self._encode(DEFS[key], value)),

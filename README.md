@@ -64,7 +64,10 @@ All configuration is environment variables — see [`.env.example`](.env.example
 | `SLACK_ENABLED`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | Slack connector — see [docs/SLACK_SETUP.md](docs/SLACK_SETUP.md) |
 | `CLASSIFIER_ENABLED`, `CLASSIFIER_MODEL`, `OPENAI_API_KEY` | Optional AI classifier |
 
-**No secrets are ever committed.** `.env`, OAuth tokens, and `agent/config.json` are gitignored.
+**No secrets are committed.** `.env`, OAuth tokens, and `agent/config.json` are
+gitignored, and CI runs a [gitleaks](https://github.com/gitleaks/gitleaks) scan
+over the full git history on every push — so this is an enforced check, not just
+a claim.
 
 ## Run the detector (gaming PC)
 
@@ -98,7 +101,7 @@ Five choices that shaped the system, and their tradeoffs:
 2. **Idempotency as a schema guarantee, not a convention.** `(source, external_id)` uniqueness makes redeliveries free (replays return the original, 200 vs 201), and delivery acks are once-only after a successful send. External services redeliver constantly — the design assumes it instead of fighting it.
 3. **A custom overlay instead of native Windows toasts.** Focus Assist silences toasts during fullscreen gaming — precisely when an urgent break-through matters. The custom always-on-top card is immune, never steals focus, and sizes itself to measured text. Tradeoff: we own the rendering (and found the DPI bugs that come with that).
 4. **The LLM is a guest, never a dependency.** The classifier sits behind an interface, its output is schema-validated like any untrusted API, and every failure path lands on deterministic rules. The product works with AI unplugged; tests never make a paid call.
-5. **Freshness gates interruptions.** An event received long before ingestion is history, not an interruption — it queues for the digest regardless of priority. Learned live: the first Gmail sync tried to pop 31 overlay cards for old mail.
+5. **Freshness gates interruptions.** An event received long before ingestion is history, not an interruption — it's queued silently instead of shown, regardless of priority. Learned live: the first Gmail sync tried to pop 31 overlay cards for old mail.
 
 ## Documentation
 
