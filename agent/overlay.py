@@ -101,8 +101,10 @@ def show_overlay(
     retries instead of acking. Sequential by design — cards never stack."""
     # Canvas.bbox() returns None for empty text -> TypeError -> the card would
     # fail and be retried forever. A Discord message that is only an attachment
-    # has empty content, so this is real (M7).
+    # has empty content, and a digest whose text starts with a newline yields an
+    # empty title line, so guard BOTH (M7, N9).
     body = body or " "
+    title = title or " "
     try:
         import tkinter as tk
         import tkinter.font as tkfont

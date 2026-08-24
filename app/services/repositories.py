@@ -104,10 +104,11 @@ class EventRepository:
 
     def mark_all_read(self) -> list[str]:
         conn = self.db.connection()
-        ids = [r["id"] for r in conn.execute(
-            "SELECT id FROM events WHERE read_at IS NULL"
-        ).fetchall()]
-        with conn:
+        with conn:  # SELECT + UPDATE in one transaction so a concurrent insert
+            # can't slip between them and be missed by the returned ids (N17).
+            ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM events WHERE read_at IS NULL"
+            ).fetchall()]
             conn.executemany(
                 "UPDATE events SET read_at = ? WHERE id = ?",
                 [(_now(), event_id) for event_id in ids],

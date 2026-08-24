@@ -16,10 +16,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install deps
+      # Gate the release on the test suite — never ship an untested binary
+      # (the whole reason an old vulnerable build was the download; review B1).
+      - name: Test gate
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller psutil pystray pillow pywebview winotify
+          pip install -e . pytest httpx ruff
+          ruff check app tests agent
+          pytest -q
+      - name: Install build deps
+        run: pip install pyinstaller psutil pystray pillow pywebview winotify
         working-directory: agent
       - name: Stamp build
         shell: pwsh

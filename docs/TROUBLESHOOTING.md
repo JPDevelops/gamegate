@@ -7,10 +7,10 @@ State the failure as "expected X, observed Y", find the layer, test the layer un
 | API won't start | Read the traceback. Wrong venv? `which python`. Port taken? `ss -ltnp \| grep 8000` |
 | `/health` works locally, fails through Nginx | `sudo nginx -t`, then `/var/log/nginx/error.log`. 502 = Nginx can't reach Uvicorn → is the service running? |
 | Detector "does nothing" | Run `python detector.py --once` and read the log lines. Is the game's real process name in config.json? (Task Manager → Details) |
-| Detector logs "API unreachable" | `curl http://SERVER:8000/health` from the gaming PC. Firewall? Token mismatch = 401 in server logs |
+| Detector logs "API unreachable" | `curl https://<your-host>/health` from the gaming PC (the API is HTTPS via nginx; uvicorn is 127.0.0.1-only). A wrong token now logs "token rejected (401)", not "unreachable" |
 | Events duplicated | They can't be, by design — check you're not generating different external_ids for the same message |
 | Digest never arrives | Was a session actually closed? `journalctl -u gamegate \| grep "session closed"`. Is the Discord connector running and is GAMEGATE_DISCORD_CHANNEL_ID right? |
-| Digest arrives twice | Should be impossible (ack-once). If seen: two connector processes running — `ps aux \| grep discord_bot` |
+| Digest arrives twice | Delivery is at-least-once (send-then-ack): a send that succeeds while its ack fails re-sends. A digest is built at most once (DB UNIQUE(session_id)); a duplicate *delivery* is possible. If persistent: two connector processes — `ps aux \| grep discord_bot` |
 | Gmail keeps re-ingesting | It re-polls the same messages by design; the API dedupes. Storage growing = check external_ids are stable |
 | Slack silent | Socket Mode enabled? Both tokens set and not swapped? Bot invited to the channel? Event subscription `app_mention` added? |
 | Classifier "weird" | It can't break routing (fallback). Check logs for "fell back to deterministic". Disable with CLASSIFIER_ENABLED=false |
@@ -20,7 +20,7 @@ State the failure as "expected X, observed Y", find the layer, test the layer un
 ## Log locations
 
 - API + connectors (systemd): `journalctl -u gamegate -f`, `journalctl -u gamegate-discord -f`
-- Nginx: `/var/log/nginx/access.log`, `/var/log/nginx/error.log`
+- Nginx: `/var/log/nginx/gamegate.access.log` (query strings stripped), `/var/log/nginx/error.log`
 - Detector: stdout (add `> detector.log 2>&1` or Task Scheduler logging)
 
 Logs never contain secrets or full message bodies — grep for `state transition`, `session`, `fell back`, `unreachable` as anchors.

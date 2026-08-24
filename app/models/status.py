@@ -17,11 +17,12 @@ class StatusUpdate(BaseModel):
     started_at: datetime | None = None
     app_id: str | None = None  # e.g. Steam appid, for artwork
 
-    @field_validator("application")
+    @field_validator("application", "app_id")
     @classmethod
-    def _clean_application(cls, v: str | None) -> str | None:
-        """A game/process name. Strip control characters and cap the length so
-        it can't inject forged lines into journald when logged (review M4)."""
+    def _clean_text(cls, v: str | None) -> str | None:
+        """Game name / launcher app id. Strip control characters and cap the
+        length — `application` gets logged (journald injection) and `app_id`
+        flows into an image URL, so bound both symmetrically (review M4, N10)."""
         if v is None:
             return None
         cleaned = "".join(ch for ch in v if ch == " " or ch.isprintable())
