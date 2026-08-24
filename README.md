@@ -2,7 +2,7 @@
 
 ## Project goal
 
-GameGate is an app that tracks when you play games — it looks at your system processes. From there, while playing, it'll keep log of Discord, Slack, Gmail and other important apps to withhold any non-urgent messages till you are done playing; urgent messages will notify you. When the session ends, you get one digest of everything you missed.
+GameGate is an app that tracks when you play games — it looks at your system processes. From there, while playing, it holds non-urgent messages from Gmail and Discord (Slack is planned) until you're done playing; urgent messages break through. When the session ends, you get one digest of everything you missed.
 
 ## How it works
 
@@ -16,13 +16,13 @@ detector.py  ──POST /status──> Nginx → FastAPI ←──poll──  Gm
                                  └──── session ends → ONE digest → Discord
 ```
 
-Every external message becomes one internal **Event** `(source, external_id, sender, title, priority, …)`, stored idempotently — the same message can never be ingested twice. The **routing engine** combines your current state (available / focused / gaming / away) with the event's priority to deliver immediately, queue for the digest, or suppress. An optional **AI classifier** enriches events but always falls back to deterministic rules.
+Every external message becomes one internal **Event** `(source, external_id, sender, title, priority, …)`, stored idempotently — the same message can never be ingested twice. The **routing engine** combines your current state (available / focused / gaming / away) with the event's priority to deliver immediately, queue for the digest, or suppress. Ingestion prioritizes with deterministic rules (VIP senders, urgent keywords). An optional **AI classifier** endpoint (`POST /events/{id}/classify`) can score an event's urgency and demonstrates the graceful-fallback pattern — it is not yet wired into the automatic ingest path.
 
 ## Stack
 
 - **Python 3.12**, **FastAPI + Uvicorn** — API layer
 - **SQLite** — persistence behind a repository layer
-- **Pytest + httpx** — 100+ tests, all offline (fakes/mocks for every external service)
+- **Pytest + httpx** — 160+ tests, all offline (fakes/mocks for every external service)
 - **Ruff** — linting; **GitHub Actions** — CI on every push/PR
 - **Nginx + systemd** — production-style deployment (`nginx/`, `deploy/`)
 
@@ -82,7 +82,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Uvicorn manually → systemd servi
 
 - SQLite = single host, modest concurrency (fine for one user; PostgreSQL is the documented scale-up path)
 - Gmail uses polling, not push; worst-case latency is one poll interval
-- Slack ingests `app_mention` only (first pass, by design)
+- Slack is **not enabled in v0.1** (the connector code exists but `/connect/slack` returns 409 by product decision); Gmail and Discord are the shipped sources
 - The detector matches process names; games launched under unexpected binary names need adding to `config.json`
 
 ## Security & privacy
