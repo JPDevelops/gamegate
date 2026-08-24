@@ -408,7 +408,19 @@ const views = {
       <div class="setrow"><div class="lbl"><div>${label}</div><div class="muted">${hint}</div></div>
         <div class="switch ${s[key] ? "on" : ""}" onclick="setSetting('${key}', ${!s[key]})"></div></div>`;
     const dark = !document.body.classList.contains("light");
+    const agent = (cache.connections && cache.connections.agent) || {};
+    const pending = agent.pending;
+    let appStatus, appMuted;
+    if (pending == null) { appStatus = "Checking for updates…"; appMuted = true; }
+    else if (pending > 0) {
+      appStatus = `Update available (${pending}) — use “Update GameGate” in the tray menu`; appMuted = false;
+    } else { appStatus = "Latest version"; appMuted = true; }
     return `
+    <div class="section-title">App</div>
+    <div class="card">
+      <div class="setrow"><div class="lbl"><div>GameGate desktop app</div>
+        <div class="${appMuted ? "muted" : ""}" style="${appMuted ? "" : "color:var(--amber);font-weight:600"}">${esc(appStatus)}${agent.build ? " · build " + esc(agent.build) : ""}</div></div></div>
+    </div>
     <div class="section-title">Notifications</div>
     <div class="card">
       ${sw("urgent_breakthrough", "Urgent break-through while gaming",

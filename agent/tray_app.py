@@ -16,6 +16,7 @@ Package:   see docs/DESKTOP_APP.md (PyInstaller one-file GameGate.exe)
 Windows-only bits (pystray, winotify) are lazy-imported so the pump logic
 stays unit-testable on any OS.
 """
+import contextlib
 import json
 import logging
 import os
@@ -106,6 +107,14 @@ class FullApiClient(ApiClient):
 
     def client_settings(self) -> dict | None:
         return self._request("GET", "/settings/client")
+
+    def report_update_status(self, count: int, build: str) -> bool:
+        """Tell the server how many updates are pending + this build, so the
+        dashboard Settings area can show the same 'Latest version' / 'Update
+        available' state as the tray (review: same function in settings)."""
+        return self._post_json(
+            "/agent/update-status", {"pending": int(count), "build": build}
+        )
 
 
 def notification_title_body(event: dict) -> tuple[str, str]:
@@ -522,7 +531,24 @@ def run_tray() -> None:
             duration_s=pump.duration_s, sound=pump.sound,
         )
 
+    # Shared update state, filled by update_check_loop. None = not checked yet.
+    update_status = {"count": None}
+
+    def update_item_text(_item) -> str:
+        count = update_status["count"]
+        if count is None:
+            return "Checking for updates…"
+        if count > 0:
+            return f"Update GameGate ({count})"
+        return "Latest version"
+
+    def update_item_enabled(_item) -> bool:
+        # Greyed out unless a real update is waiting (review: 'Update' always shown).
+        return bool(update_status["count"])
+
     def on_update(icon, _item):
+        if not update_status["count"]:
+            return  # nothing to update — the item is disabled anyway
         notify(
             "GameGate", "Updating — the app will restart itself in about a minute.",
             duration_s=pump.duration_s, sound=False,
@@ -550,7 +576,7 @@ def run_tray() -> None:
             pystray.MenuItem("Status", on_status),
             pystray.MenuItem("Last digest", on_digest),
             pystray.MenuItem("Do Not Disturb", on_dnd),
-            pystray.MenuItem("Update GameGate", on_update),
+            pystray.MenuItem(update_item_text, on_update, enabled=update_item_enabled),
             pystray.MenuItem("Quit", on_quit),
         ),
     )
@@ -567,6 +593,11 @@ def run_tray() -> None:
         while not stop.is_set():
             try:
                 count = checker.pending_changes()
+                update_status["count"] = count       # drive the tray menu label/enabled
+                with contextlib.suppress(Exception):
+                    icon.update_menu()               # re-render 'Latest version' vs 'Update (N)'
+                with contextlib.suppress(Exception):
+                    api.report_update_status(count, build_info())  # so the dashboard shows it too
                 if count > 0:
                     # Never interrupt a game with an update prompt — that's the
                     # exact thing GameGate exists to prevent (M22). Wait for a
