@@ -23,7 +23,7 @@ if (Test-Path "dist\GameGate.exe") { Remove-Item "dist\GameGate.exe" -Force }
 python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py
 
 if (-not (Test-Path "dist\GameGate.exe")) {
-  Write-Host "BUILD FAILED — see output above. Press Enter to close." -ForegroundColor Red
+  Write-Host "BUILD FAILED - see output above. Press Enter to close." -ForegroundColor Red
   Read-Host
   exit 1
 }
