@@ -79,8 +79,10 @@
                      10% { opacity:1; } 90% { opacity:1; } to { transform:translateY(-20px); opacity:0; } }
   .demo .scanline { position:absolute; inset:0; background:repeating-linear-gradient(
       0deg, transparent 0 3px, #ffffff05 3px 4px); pointer-events:none; }
-  .demo .hud { position:absolute; bottom:12px; left:16px; color:#ffffff35; font-size:11px; letter-spacing:.05em; }
-  .demo .status { position:absolute; bottom:12px; right:16px; display:flex; align-items:center; gap:7px;
+  .demo .footbar { position:absolute; left:16px; right:16px; bottom:12px; display:flex;
+                   align-items:center; justify-content:space-between; gap:10px 12px; flex-wrap:wrap; }
+  .demo .hud { color:#ffffff35; font-size:11px; letter-spacing:.05em; min-width:0; flex:1 1 auto; }
+  .demo .status { display:flex; align-items:center; gap:7px; flex:0 0 auto; white-space:nowrap;
                   font-size:11px; color:var(--dim); background:#0a0c0d99; padding:4px 10px; border-radius:99px; }
   .demo .status .d { width:8px; height:8px; border-radius:50%; background:var(--green);
                      box-shadow:0 0 8px var(--green); }
@@ -205,8 +207,10 @@
       <div class="b"><div class="t">URGENT · GMAIL</div><div class="m">boss@work.com: the server's down, call me</div></div>
       <div class="prog"></div>
     </div>
-    <div class="status"><span class="d"></span> GAMING · Fortnite</div>
-    <div class="hud">your game keeps running — nothing steals focus</div>
+    <div class="footbar">
+      <div class="hud">your game keeps running — nothing steals focus</div>
+      <div class="status"><span class="d"></span> GAMING · Fortnite</div>
+    </div>
   </div>
 </div></div>
 
