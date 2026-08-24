@@ -186,11 +186,14 @@
   a:focus-visible, button:focus-visible, .btn:focus-visible {
     outline:2px solid var(--green2); outline-offset:2px; border-radius:4px;
   }
-  /* Respect the OS "reduce motion" setting: no animations, and reveal content
-     immediately (N50). */
+  /* Reduce-motion: the hero demo and the notification toasts ARE the product
+     showcase, so they keep animating even under "reduce motion" (deliberate
+     product decision for the marketing page). We still calm hover transitions
+     and — critically — reveal scroll content immediately so nothing is ever
+     left hidden for a reduced-motion visitor (N50). */
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation:none !important; transition:none !important; }
-    .reveal { opacity:1 !important; transform:none !important; }
+    a, button, .btn, .fcard, .step { transition:none !important; }
+    .reveal { opacity:1 !important; transform:none !important; animation:none !important; }
   }
 </style>
 <noscript><style>
