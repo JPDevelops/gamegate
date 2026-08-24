@@ -3,5 +3,5 @@ Safe to delete after the demo."""
 
 
 def test_ci_demo_math():
-    # Intentionally wrong to demonstrate a RED check that blocks merge.
-    assert 1 + 1 == 3
+    # Now correct — CI turns GREEN and the merge unlocks.
+    assert 1 + 1 == 2
