@@ -338,3 +338,64 @@ def _show_update_prompt(change_count: int) -> bool:
     except Exception:
         log.exception("Update prompt failed")
         return False
+
+
+def show_consent_prompt(title: str, message: str,
+                        yes_label: str = "Yes", no_label: str = "Not now") -> bool:
+    """Public entry: a Yes/No consent card. Serialized like the other prompts."""
+    with _ui_lock:
+        return _show_consent_prompt(title, message, yes_label, no_label)
+
+
+def _show_consent_prompt(title: str, message: str, yes_label: str, no_label: str) -> bool:
+    """A centered Yes/No dialog (first-run opt-in). Returns True on Yes, False on
+    No / dismiss / timeout. Best run on the main thread at startup."""
+    try:
+        import tkinter as tk
+
+        result = {"yes": False}
+        root = tk.Tk()
+        root.title("GameGate")
+        root.attributes("-topmost", True)
+        scale = max(1.0, root.winfo_fpixels("1i") / 96.0)
+
+        def px(value: float) -> int:
+            return int(value * scale)
+
+        width, height = px(400), px(190)
+        screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.geometry(
+            f"{width}x{height}+{(screen_w - width) // 2}+{(screen_h - height) // 3}"
+        )
+        root.configure(bg=BG, highlightthickness=1, highlightbackground=EDGE)
+
+        tk.Label(root, text=title, bg=BG, fg=FG_TITLE,
+                 font=("Segoe UI", -px(16), "bold"), anchor="w",
+                 ).pack(fill="x", padx=px(20), pady=(px(18), px(4)))
+        tk.Label(root, text=message, bg=BG, fg=FG_BODY, font=("Segoe UI", -px(12)),
+                 anchor="w", justify="left", wraplength=width - px(40),
+                 ).pack(fill="x", padx=px(20))
+
+        row = tk.Frame(root, bg=BG)
+        row.pack(side="bottom", fill="x", padx=px(20), pady=px(16))
+
+        def choose(yes: bool) -> None:
+            result["yes"] = yes
+            root.destroy()
+
+        tk.Button(row, text=yes_label, command=lambda: choose(True),
+                  bg=ACCENT, fg="#06130b", activebackground="#4ae584",
+                  activeforeground="#06130b", relief="flat", bd=0,
+                  font=("Segoe UI", -px(12), "bold"), padx=px(16), pady=px(6),
+                  cursor="hand2").pack(side="right")
+        tk.Button(row, text=no_label, command=lambda: choose(False),
+                  bg=BG, fg=FG_MUTED, activebackground=EDGE, activeforeground=FG_BODY,
+                  relief="flat", bd=0, font=("Segoe UI", -px(12)),
+                  padx=px(16), pady=px(6), cursor="hand2").pack(side="right", padx=(0, px(8)))
+
+        root.after(120_000, root.destroy)  # auto-decline after two minutes
+        root.mainloop()
+        return result["yes"]
+    except Exception:
+        log.exception("Consent prompt failed")
+        return False
