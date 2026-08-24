@@ -2,6 +2,7 @@ from app.config import get_settings
 from app.db import get_database
 from app.services.ingest_service import IngestService
 from app.services.repositories import (
+    ConnectorHealthRepository,
     DigestRepository,
     EventRepository,
     NotificationRepository,
@@ -40,3 +41,7 @@ def get_digest_repo() -> DigestRepository:
 
 def get_notification_repo() -> NotificationRepository:
     return NotificationRepository(get_database())
+
+
+def get_connector_health_repo() -> ConnectorHealthRepository:
+    return ConnectorHealthRepository(get_database())

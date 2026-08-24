@@ -20,7 +20,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import __version__
 from app.api.connectors import service_active
 from app.config import get_settings
-from app.deps import get_digest_repo, get_settings_service
+from app.deps import (
+    get_connector_health_repo,
+    get_digest_repo,
+    get_settings_service,
+)
 from app.security import (
     COOKIE_NAME,
     SESSION_TTL_SECONDS,
@@ -32,7 +36,7 @@ from app.security import (
     verify_session_cookie,
 )
 from app.services.digest_service import render_text
-from app.services.repositories import DigestRepository
+from app.services.repositories import ConnectorHealthRepository, DigestRepository
 from app.services.settings_service import SettingsService
 
 router = APIRouter()
@@ -112,9 +116,27 @@ def digest_history(
     return digests
 
 
+def _apply_health(conn: dict, health: dict | None) -> dict:
+    """Downgrade a 'connected' connector to 'degraded' when its last heartbeat
+    was an error more recent than its last success — so the dashboard reflects
+    live health, not just the enable flag (review MAJOR). Also surface the last
+    error detail. Unknown health (no heartbeat yet) leaves the state untouched."""
+    if conn.get("state") != "connected" or not health:
+        return conn
+    last_ok = health.get("last_success")
+    last_err = health.get("last_error")
+    if last_err and (not last_ok or last_err > last_ok):
+        conn["state"] = "degraded"
+        conn["detail"] = f"Last run errored: {health.get('error_detail') or 'unknown'}"[:200]
+    elif last_ok:
+        conn["detail"] = f"{conn['detail']} (last ok {last_ok[:19]}Z)"
+    return conn
+
+
 @router.get("/connections", dependencies=[Depends(require_api_token)])
 def connections(
     settings_service: Annotated[SettingsService, Depends(get_settings_service)],
+    health_repo: Annotated[ConnectorHealthRepository, Depends(get_connector_health_repo)],
 ) -> dict:
     settings = get_settings()
     prefs = settings_service.get_all()
@@ -167,6 +189,11 @@ def connections(
         else {"state": "disconnected", "detail": "Deterministic rules only",
               "can_connect": True}
     )
+
+    # Fold in live heartbeat health: a connected connector whose last poll errored
+    # shows as 'degraded', not a green 'connected' flag.
+    _apply_health(gmail, health_repo.get("gmail"))
+    _apply_health(discord, health_repo.get("discord"))
 
     return {
         "discord": discord,

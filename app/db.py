@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TEXT NOT NULL,
     delivered INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS connector_health (
+    name TEXT PRIMARY KEY,
+    last_success TEXT,
+    last_error TEXT,
+    error_detail TEXT,
+    updated_at TEXT NOT NULL
+);
 """
 
 

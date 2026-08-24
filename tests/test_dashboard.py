@@ -89,6 +89,25 @@ def test_connections_reports_truth(client, monkeypatch):
     assert "Version" in body["settings"]
 
 
+def test_connector_heartbeat_drives_health(client, monkeypatch, tmp_path):
+    """MAJOR: 'connected' should reflect live health, not just the enable flag.
+    A connected Gmail whose last heartbeat was an error shows as 'degraded'."""
+    token = tmp_path / "token.json"
+    token.write_text("{}")  # exists → gmail counts as 'connected'
+    monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("GMAIL_ENABLED", "true")
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token))
+
+    # healthy heartbeat → stays connected
+    client.post("/connectors/gmail/heartbeat", json={"ok": True})
+    assert client.get("/connections").json()["gmail"]["state"] == "connected"
+    # a later error heartbeat → degraded, with the detail surfaced
+    client.post("/connectors/gmail/heartbeat", json={"ok": False, "detail": "token expired"})
+    gmail = client.get("/connections").json()["gmail"]
+    assert gmail["state"] == "degraded"
+    assert "token expired" in gmail["detail"]
+
+
 def test_digest_history_lists_recent_with_rendered_text(client):
     client.post("/status", json={"state": "gaming", "application": "g.exe"})
     client.post("/status", json={"state": "available"})

@@ -37,8 +37,10 @@ def main() -> None:
                 ingested = poller.poll_once()
                 if ingested:
                     log.info("Ingested %s message(s)", ingested)
-            except Exception:
+                api.heartbeat("gmail", True)   # a clean cycle → connector is healthy
+            except Exception as exc:
                 log.exception("Gmail poll failed; will retry next cycle")
+                api.heartbeat("gmail", False, str(exc))  # surface it on the dashboard
                 poller = None  # rebuild the client next time (e.g. after re-auth)
         else:
             poller = None  # drop the client while disabled

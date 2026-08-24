@@ -60,6 +60,10 @@ def build_client() -> discord.Client:
     @client.event
     async def on_ready():
         log.info("Connected as %s", client.user)
+        # Reaching on_ready means the gateway accepted the token — report health
+        # so the dashboard can show 'connected' as actually-connected, not just a
+        # flag (review MAJOR). A rejected token never gets here, so it stays stale.
+        await asyncio.to_thread(api.heartbeat, "discord", True)
         # Delivery is the desktop app's job (PO decision 2026-08-23); this pump
         # only runs if explicitly re-enabled. on_ready fires again after
         # reconnects — one pump only.
