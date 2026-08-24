@@ -98,3 +98,58 @@ Discord keeps ingesting, the new `deploy/gamegate.service` must be installed
 (daemon-reload + restart), and the passwordless sudoers rule can then be removed.
 Deploying the API alone without these would leave the dashboard toggles flipping
 a flag the old connector code ignores — so this is done with the owner watching.
+
+## Review round 8 (two independent no-context reviewers) — 2026-08-24
+
+A cross-model pass (OpenAI gpt-5.6-sol) plus a fresh Claude reviewer, each given
+the whole repo + site with no prior context. Both returned **0 blockers**.
+
+**Fixed this round (correctness/security):**
+- **Recap backlog-starvation** (the important one): the recap filtered
+  `undelivered()`'s 1000 oldest rows in Python *after* the LIMIT. Because
+  away/focused events are never consumed under decision C, they accumulate
+  unbounded and, past 1000, would starve a game's real in-window messages out of
+  its recap. Now filtered in SQL (`undelivered_in_window`) so the cap bounds the
+  rows that matter. Regression test with a 1001-row backlog.
+- **OAuth callback expiry**: `gmail_callback` checked state membership but never
+  the stored TTL (cleanup only ran when a new state was issued). Now pops and
+  checks expiry at callback. Test with a past-TTL state.
+- **`.env` concurrent-writer race**: fixed `.env.tmp` + unlocked read-modify-write
+  could lose an update or collide on `os.replace`. Now serialized under an flock
+  with a unique `mkstemp` temp file. 24-thread test (old code throws).
+- **Concurrency test guarded dead code**: the race test hit
+  `SessionRepository.close_current()`, which production never calls. Deleted that
+  dead method; the tests now race the real `StatusService.set(available)` path
+  and assert the true invariant (one closed session, one recap).
+- **`started_at` normalization**: naive→UTC + implausible-future clamp at the
+  model boundary, so a bad detector clock can't open a session with an absurd
+  recap window.
+
+**Fixed this round (doc/claim accuracy & polish):**
+- Sidebar version was hardcoded `v0.1` on a 0.2.0 app — now injected from
+  `__version__` (test-guarded); DEPLOYMENT health example corrected.
+- Static `/site/` now carries the full security-header set (HSTS/CSP/
+  Permissions-Policy) at the nginx edge, not just three headers.
+- Reconciled several docs to the code: port 80 is redirect-only (not "kept for
+  plain-HTTP lab clients"); transactional session close is DONE (not "open
+  debt"); ARCHITECTURE persists 7 stores (not 5) and is honest about the
+  deliberate non-repository SQL and the real cost of a Postgres port; recap is
+  delivered by the desktop app (not the Discord connector); the self-updater
+  only works for a source install (a downloaded exe needs a signed artifact).
+- Removed job/interview/"dad-simulation" meta-artifacts and a dangling review
+  link from the docs.
+- `gitleaks` secret-scan job now runs on every push (full history) — the
+  "no secrets" claim is an enforced check, verified clean across 131 commits.
+- Smaller: settings version only bumps on a real change; art negative-cache test
+  counts provider calls; release bundles the build stamp into the exe; test_health
+  uses the shared fixture; marketing wording made precise (dashboard-managed
+  connectors; Focus-Assist-immune but not exclusive-fullscreen-immune overlay).
+
+**Deferred (with reasons) — needs the owner or a Windows pass, not a guess:**
+| Finding | Why deferred | Needs |
+|---|---|---|
+| **Dashboard-DND vs detector state machine** (a manual DND set from the dashboard can be silently re-overridden — or fail to re-assert — because the detector short-circuits when its locally-remembered game/state is unchanged) | The correct fix is a design change: model manual DND as a distinct persisted override and derive the effective state server-side, rather than DND competing as an availability value. That changes detector + dashboard + server behavior and UX, and can only be validated on Windows. | An owner product decision on override semantics + a Windows test pass. |
+| **Tkinter windows created from worker threads** (M21) | Correct fix (single UI thread + a render queue) is a Windows-only refactor not exercisable in Linux CI. | Manual Windows verification. |
+| **Unpinned dependencies / no lockfile** (M26) | Adds a lockfile + install-from-lock; low risk but changes the CI pipeline; kept as its own PR. | A dedicated CI PR. |
+| **CSP `unsafe-inline`** (M24) | Moving ~20 inline handlers to `addEventListener` is a sizable, self-contained template change. | A dashboard-hardening PR. |
+| **Process-name detection determinism / hysteresis** | Rank duplicate-named processes deterministically and add switch hysteresis; desktop-only, needs care to avoid detection regressions. | A desktop change + manual test. |
