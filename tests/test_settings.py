@@ -63,3 +63,11 @@ def test_clear_data_requires_confirmation_and_preserves_settings(client):
     assert client.get("/events").json() == []
     assert client.get("/settings").json()["overlay_duration_s"] == 15  # settings survive
     assert client.get("/status").json()["state"] == "available"
+
+
+def test_settings_list_length_is_capped(client):
+    huge = [f"kw{i}" for i in range(10000)]
+    assert client.put("/settings", json={"urgent_keywords": huge}).status_code == 422
+    assert client.put("/settings", json={"vip_senders": ["x" * 500]}).status_code == 422
+    # a reasonable list still works
+    assert client.put("/settings", json={"urgent_keywords": ["urgent", "asap"]}).status_code == 200

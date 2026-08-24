@@ -8,6 +8,7 @@ GET /connections  — real per-connector status: connected / needs setup /
 GET /digests      — digest history for the Inbox tab.
 """
 import os
+import secrets
 from pathlib import Path
 from typing import Annotated
 
@@ -44,7 +45,7 @@ def dashboard(
     gamegate_token: Annotated[str | None, Cookie()] = None,
 ) -> HTMLResponse:
     expected = get_settings().api_token
-    if expected and key == expected and gamegate_token != expected:
+    if expected and secrets.compare_digest(key, expected) and not secrets.compare_digest(gamegate_token or '', expected):
         # Exchange the one-time link for a cookie and drop the key from the URL.
         response = RedirectResponse("/app", status_code=303)
         # Secure when the dashboard is reached over HTTPS (nginx sets
@@ -57,7 +58,8 @@ def dashboard(
             max_age=60 * 60 * 24 * 90,
         )
         return response
-    if expected and gamegate_token != expected and key != expected:
+    if expected and not secrets.compare_digest(gamegate_token or '', expected) \
+            and not secrets.compare_digest(key, expected):
         return HTMLResponse(LOGIN_PAGE, status_code=401)
     return HTMLResponse(TEMPLATE.read_text())
 

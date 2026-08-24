@@ -54,3 +54,9 @@ def test_rate_limit_uses_last_xff_hop_not_spoofable(tmp_path, monkeypatch):
                 break
         assert got429  # rotating the spoofed left entry did not evade the limiter
     get_settings.cache_clear()
+
+
+def test_deeply_nested_json_is_400_not_500(client):
+    nested = "{\"a\":" * 3000 + "1" + "}" * 3000
+    r = client.post("/events", data=nested, headers={"Content-Type": "application/json"})
+    assert r.status_code in (400, 422)  # clean client error, never 500

@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app import __version__
@@ -36,6 +37,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="GameGate", version=__version__, lifespan=lifespan)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthRateLimitMiddleware)
+
+
+@app.exception_handler(RecursionError)
+async def _too_deep(request: Request, exc: RecursionError) -> JSONResponse:
+    # Deeply-nested JSON blew the parser's recursion limit — client error,
+    # not a server fault. Return a clean 400 instead of a 500.
+    return JSONResponse(status_code=400, content={"detail": "Payload too deeply nested"})
 app.include_router(status_router)
 app.include_router(events_router)
 app.include_router(digest_router)
