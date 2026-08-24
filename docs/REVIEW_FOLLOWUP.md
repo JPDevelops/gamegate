@@ -205,7 +205,7 @@ the Claude reviewer's only MAJOR was the already-known/deferred Tkinter threadin
 **Still deferred (need the owner, Windows, or a dedicated PR):**
 | Item | Why | Needs |
 |---|---|---|
-| Dashboard-DND vs detector state machine | Design change + UX decision | Owner decision + Windows test |
+| ~~Dashboard-DND vs detector state machine~~ | **DONE (owner chose: dashboard wins).** DND is now a persisted `override_state` distinct from the detector's `state`; `POST /status/dnd` sets it, a detector `POST /status` can't clear it or drive sessions while it's held, and `GET /status` reports the override as the effective state with a `manual_override` flag. Turning DND on mid-game recaps that game; off hands control back on the next poll. The one remaining piece is unifying the *tray app's* own DND button onto the same endpoint — a Windows-side change. | Tray-side unification (Windows) |
 | Tkinter single-UI-thread refactor | Windows-only, not CI-testable | Windows pass |
 | Signed/hash-verified release updater | Source updater is a dev convenience today | Release-signing work |
 | Dependency lockfile + SHA-pinned actions | Changes the CI pipeline | Dedicated CI PR (gitleaks download already checksum-pinned) |

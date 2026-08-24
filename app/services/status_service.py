@@ -38,30 +38,58 @@ class StatusService:
         return self.status_repo.get()
 
     def set(self, update: StatusUpdate) -> tuple[StatusResponse, dict | None]:
-        """Apply a status change. Returns (new_status, closed_session|None)."""
-        previous = self.status_repo.get()
-        result = self.status_repo.set(update)
-        if previous.state != update.state:
-            log.info("State transition: %s -> %s", previous.state.value, update.state.value)
+        """Apply a detector/base status change. Returns (new_status, closed|None).
 
-        # Reconcile the session to the DESIRED state by comparing it to the
-        # ACTUAL open session — not just to the previous status (review B1).
-        # The status write and the session write are separate transactions, so a
-        # crash between them used to leave an unrepairable "gaming with no
-        # session" or "available with a session still open". Driving off the real
-        # session state means the very next status poll self-heals it.
+        This is the detector's path. It writes the base state but does NOT clear
+        a manual DND override — and while an override is in force the detector
+        can't drive sessions at all, so a game starting mid-DND won't open a
+        session or cut a recap until the owner turns DND off."""
+        result = self.status_repo.set(update)
+        if result.manual_override:
+            # DND is on — the dashboard wins. Record the base state (done above)
+            # but hold all session reconciliation until DND clears.
+            return result, None
+        return result, self._reconcile_sessions(update.state, update)
+
+    def set_dnd(self, enabled: bool) -> tuple[StatusResponse, dict | None]:
+        """Dashboard 'Do Not Disturb' — a manual override the detector can't
+        overwrite. Turning it ON closes any open gaming session (you get the
+        recap for what you played, then nothing new is cut while focused);
+        turning it OFF resumes detector control on the next poll."""
+        if enabled:
+            self.status_repo.set_override(AvailabilityState.FOCUSED.value)
+            current = self.session_repo.current()
+            closed = self._close_session() if current is not None else None
+            log.info("DND override enabled (dashboard)")
+            return self.status_repo.get(), closed
+        self.status_repo.set_override(None)
+        log.info("DND override cleared (dashboard); detector resumes on next poll")
+        # Don't retro-open a session here (we lack the detector's app_id); the
+        # next detector poll self-heals within one interval.
+        return self.status_repo.get(), None
+
+    def _reconcile_sessions(
+        self, effective_state, update: StatusUpdate | None
+    ) -> dict | None:
+        """Open/switch/close the gaming session to match the effective state.
+
+        Reconcile against the ACTUAL open session, not just the previous status
+        (review B1): the status and session writes are separate transactions, so
+        a crash between them used to leave an unrepairable "gaming with no
+        session" or "available with a session still open". Driving off the real
+        session state means the very next poll self-heals it."""
         current = self.session_repo.current()  # the open session row, or None
         closed_session = None
-        if update.state == AvailabilityState.GAMING:
+        if effective_state == AvailabilityState.GAMING and update is not None:
             if current is None:
                 self._open_session(update)                    # heals gaming-with-no-session
             elif current["application"] != update.application:
                 closed_session = self._close_session()        # game switch: close old...
                 self._open_session(update)                    # ...and open the new one
             # else: the correct session is already open — nothing to do
-        elif current is not None:
+        elif effective_state != AvailabilityState.GAMING and current is not None:
             closed_session = self._close_session()            # heals stuck-open session
-        return result, closed_session
+        return closed_session
 
     def _open_session(self, update: StatusUpdate) -> None:
         opened = self.session_repo.open(

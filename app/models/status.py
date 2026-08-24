@@ -49,3 +49,13 @@ class StatusResponse(BaseModel):
     state: AvailabilityState
     application: str | None
     started_at: datetime | None
+    # True when a manual dashboard DND override is in force. `state` is then the
+    # override (the effective state); the detector's own reports are held until
+    # DND is turned off. Defaults False so nothing else has to change.
+    manual_override: bool = False
+
+
+class DndUpdate(BaseModel):
+    """Dashboard 'Do Not Disturb' toggle — a manual override the detector can't
+    overwrite (owner decision: the dashboard wins)."""
+    enabled: bool

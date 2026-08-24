@@ -422,8 +422,8 @@ const views = {
     <div class="section-title">Do Not Disturb</div>
     <div class="card">
       <div class="setrow"><div class="lbl"><div>Do Not Disturb</div>
-        <div class="muted">Hold everything (like gaming, but manual). Currently: <b>${cache.status && cache.status.state === "focused" ? "ON" : "off"}</b></div></div>
-        <div class="switch ${cache.status && cache.status.state === "focused" ? "on" : ""}" onclick="toggleDnd()"></div></div>
+        <div class="muted">Hold everything (like gaming, but manual). Wins over auto-detection until you turn it off. Currently: <b>${cache.status && cache.status.manual_override ? "ON" : "off"}</b></div></div>
+        <div class="switch ${cache.status && cache.status.manual_override ? "on" : ""}" onclick="toggleDnd()"></div></div>
     </div>
     <div class="section-title">Rules</div>
     <div class="card">
@@ -458,10 +458,12 @@ async function setSetting(key, value) {
   await refresh(); route();
 }
 async function toggleDnd() {
-  const on = cache.status && cache.status.state === "focused";
-  await fetch("/status", { method: "POST",
+  // DND is a manual override the detector can't overwrite (owner decision: the
+  // dashboard wins). It stays on until turned off here, regardless of gaming.
+  const on = cache.status && cache.status.manual_override;
+  await fetch("/status/dnd", { method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ state: on ? "available" : "focused" }) });
+    body: JSON.stringify({ enabled: !on }) });
   await refresh(); route();
 }
 function toggleTheme() {

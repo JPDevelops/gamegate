@@ -164,3 +164,49 @@ def test_switching_games_mid_session_makes_a_separate_recap(client):
     client.post("/status", json={"state": "available"})
     digests = client.get("/digests").json()
     assert len(digests) == 2  # one recap per game, not a single merged one
+
+
+def _digests(client):
+    return client.get("/digests").json()
+
+
+def test_dnd_override_wins_over_detector(client):
+    """Owner decision: dashboard DND is a manual override the detector cannot
+    overwrite. Turning it on holds you focused even if the detector reports
+    gaming, and no session/recap is cut while it's on."""
+    client.post("/status/dnd", json={"enabled": True})
+    s = client.get("/status").json()
+    assert s["state"] == "focused" and s["manual_override"] is True
+
+    # Detector reports gaming while DND is on — held, not applied.
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    s = client.get("/status").json()
+    assert s["state"] == "focused" and s["manual_override"] is True
+    assert _digests(client) == []          # no recap cut while DND holds
+
+    # Turn DND off — the detector's base state (gaming) surfaces again.
+    client.post("/status/dnd", json={"enabled": False})
+    s = client.get("/status").json()
+    assert s["manual_override"] is False
+    assert s["state"] == "gaming"          # the held detector state resumes
+
+
+def test_enabling_dnd_while_gaming_closes_the_session(client):
+    """Turning DND on mid-game closes the open session (you get the recap for
+    what you played), then nothing new is cut while focused."""
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    assert len(_digests(client)) == 0
+    client.post("/status/dnd", json={"enabled": True})
+    assert len(_digests(client)) == 1      # the game session was recapped on DND-on
+    # a further detector gaming poll under DND opens nothing new
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    assert len(_digests(client)) == 1
+
+
+def test_dnd_off_lets_detector_reopen_a_session(client):
+    """After DND clears, the next detector gaming poll opens a fresh session."""
+    client.post("/status/dnd", json={"enabled": True})
+    client.post("/status/dnd", json={"enabled": False})
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    client.post("/status", json={"state": "available"})
+    assert len(_digests(client)) == 1      # a normal recap after DND is done

@@ -27,6 +27,8 @@ One current status row (state + application + started_at) and an append-only `se
 
 Deliver-now events go to a `notifications` queue that the **desktop tray app** drains (send → then ack); the Discord connector can drain it instead when `GAMEGATE_DISCORD_DELIVERY=true`. A queued event has two possible fates, not one: if it *arrived during a gaming session*, it is folded into that game's recap when the session closes; otherwise (queued while away/focused, or received before any session) it simply stays in the dashboard Messages tab and is never folded into a recap. Suppressed events are stored (audit trail) but consumed immediately.
 
+**Detected state vs. manual DND override.** The `status` row keeps the detector-driven state in `state` and a separate, nullable `override_state`. Dashboard "Do Not Disturb" sets the override (`POST /status/dnd`); while it's set, it *is* the effective state and a detector `POST /status` can update the base state but cannot open/close sessions or clear the override — so the dashboard wins and DND holds until the owner turns it off (owner decision). Turning DND on mid-game closes the open session (you still get that game's recap); turning it off hands control back to the detector on its next poll. With no override set, everything behaves exactly as before.
+
 ## How idempotency works
 
 External services redeliver: Gmail re-polls see the same messages, Slack retries slow acks, webhooks double-fire. Two layers absorb this:

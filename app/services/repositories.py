@@ -171,13 +171,29 @@ class StatusRepository:
             return StatusResponse(
                 state=AvailabilityState.AVAILABLE, application=None, started_at=None
             )
+        # A manual DND override, when set, IS the effective state — the detector's
+        # `state` is held underneath and surfaces again only when DND is cleared.
+        override = row["override_state"]
         return StatusResponse(
-            state=row["state"], application=row["application"], started_at=row["started_at"]
+            state=override or row["state"],
+            application=row["application"],
+            started_at=row["started_at"],
+            manual_override=override is not None,
         )
+
+    def base_state(self) -> str:
+        """The detector-driven state underneath any override (for reconciling
+        sessions when DND clears). AVAILABLE if no row yet."""
+        row = self.db.connection().execute(
+            "SELECT state FROM status WHERE id = 1"
+        ).fetchone()
+        return row["state"] if row else AvailabilityState.AVAILABLE.value
 
     def set(self, update: StatusUpdate) -> StatusResponse:
         conn = self.db.connection()
         with conn:
+            # Writes only the base state — never touches override_state, so a
+            # detector poll can't clear a manual DND override.
             conn.execute(
                 "INSERT INTO status (id, state, application, started_at, updated_at)"
                 " VALUES (1, ?, ?, ?, ?)"
@@ -191,6 +207,19 @@ class StatusRepository:
                 ),
             )
         return self.get()
+
+    def set_override(self, state: str | None) -> None:
+        """Set (or clear, with None) the manual DND override. Ensures the row
+        exists so the override sticks even before any detector poll."""
+        conn = self.db.connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO status (id, state, application, started_at, updated_at,"
+                " override_state) VALUES (1, ?, NULL, NULL, ?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET override_state = excluded.override_state,"
+                " updated_at = excluded.updated_at",
+                (AvailabilityState.AVAILABLE.value, _now(), state),
+            )
 
 
 class SessionRepository:

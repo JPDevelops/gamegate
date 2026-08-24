@@ -92,6 +92,10 @@ class Database:
             for migration in (
                 "ALTER TABLE sessions ADD COLUMN app_id TEXT",
                 "ALTER TABLE events ADD COLUMN read_at TEXT",
+                # Manual DND override, distinct from the detector-driven `state`
+                # (dashboard-authoritative DND): NULL = no override, else the
+                # override IS the effective state and the detector can't clobber it.
+                "ALTER TABLE status ADD COLUMN override_state TEXT",
             ):
                 try:
                     conn.execute(migration)
