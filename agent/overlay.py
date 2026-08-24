@@ -28,12 +28,12 @@ DEFAULT_DURATION_S = 8
 CORNER_RADIUS = 16
 TARGET_ALPHA = 0.97
 
-BG = "#16171d"
-EDGE = "#2c2e3a"
-ACCENT = "#7c3aed"
+BG = "#101312"
+EDGE = "#222824"
+ACCENT = "#2ee06f"
 FG_TITLE = "#ffffff"
-FG_BODY = "#c3c6d4"
-FG_MUTED = "#71748a"
+FG_BODY = "#c2c8c4"
+FG_MUTED = "#79817c"
 TRANSPARENT_KEY = "#010203"
 
 HEADER_H = 34
@@ -297,8 +297,8 @@ def show_update_prompt(change_count: int) -> bool:
 
         update_btn = tk.Button(
             row, text="Update now", command=lambda: choose(True),
-            bg=ACCENT, fg="#ffffff", activebackground="#8b5cf6",
-            activeforeground="#ffffff", relief="flat", bd=0,
+            bg=ACCENT, fg="#06130b", activebackground="#4ae584",
+            activeforeground="#06130b", relief="flat", bd=0,
             font=("Segoe UI", -px(12), "bold"), padx=px(14), pady=px(6), cursor="hand2",
         )
         update_btn.pack(side="left")

@@ -6,18 +6,19 @@
 <title>GameGate</title>
 <style>
   :root {
-    --bg-side:#101116; --bg-app:#16181f; --bg-card:#1d2027; --bg-hover:#232733;
-    --bg-inset:#13151b; --line:#2a2e3a; --line-soft:#232734;
-    --text:#e6e8ef; --text-dim:#b6bac9; --muted:#8a8fa3;
-    --accent:#7c3aed; --accent-soft:#8b5cf622; --accent2:#a78bfa;
-    --green:#23a55a; --red:#da373c; --amber:#f0b232;
+    /* Guardian: near-black, signal green means 'protected'. Color is rationed. */
+    --bg-side:#0a0c0d; --bg-app:#0e1011; --bg-card:#15181a; --bg-hover:#1b1f21;
+    --bg-inset:#090b0c; --line:#242a2c; --line-soft:#1b2022;
+    --text:#e7eae8; --text-dim:#b7bdb9; --muted:#7e8681;
+    --accent:#2ee06f; --accent-soft:#2ee06f14; --accent2:#4ae584;
+    --green:#2ee06f; --red:#e5484d; --amber:#f5a524;
     --radius:10px; --radius-lg:14px;
   }
   body.light {
-    --bg-side:#ebedf3; --bg-app:#f7f8fb; --bg-card:#ffffff; --bg-hover:#eef0f6;
-    --bg-inset:#eef0f5; --line:#d9dce6; --line-soft:#e4e7ef;
-    --text:#1c1f2a; --text-dim:#3d4152; --muted:#6b7080;
-    --accent-soft:#7c3aed14;
+    --bg-side:#eef1ef; --bg-app:#f7f9f8; --bg-card:#ffffff; --bg-hover:#edf1ee;
+    --bg-inset:#eef1ef; --line:#d7ddd9; --line-soft:#e3e8e4;
+    --text:#171b18; --text-dim:#3a403c; --muted:#68706b;
+    --accent:#149648; --accent-soft:#14964812; --accent2:#0f7d3c;
   }
   * { margin:0; padding:0; box-sizing:border-box; scrollbar-width:none; }
   *::-webkit-scrollbar { width:0; height:0; }
@@ -43,14 +44,14 @@
   nav a svg { width:17px; height:17px; flex:none; }
   nav a:hover { background:var(--bg-hover); color:var(--text-dim); }
   nav a.active { background:var(--accent-soft); color:var(--accent2); }
-  nav a .navbadge { margin-left:auto; background:var(--accent); color:#fff;
+  nav a .navbadge { margin-left:auto; background:var(--red); color:#fff;
                     border-radius:99px; font-size:10.5px; font-weight:600; padding:1px 7px; }
   .side-footer { margin-top:auto; padding:12px; }
   .status-card { background:var(--bg-card); border:1px solid var(--line-soft);
                  border-radius:var(--radius); padding:10px 12px; display:flex;
                  align-items:center; gap:9px; }
-  .status-card .dot { width:9px; height:9px; border-radius:50%; background:var(--green); flex:none; }
-  .status-card.gaming .dot { background:var(--accent2); }
+  .status-card .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
+  .status-card.gaming .dot { background:var(--green); box-shadow:0 0 8px var(--green); }
   .status-card.focused .dot { background:var(--red); }
   .status-card .lbl { min-width:0; }
   .status-card .lbl b { display:block; font-size:12.5px; font-weight:600;
@@ -93,11 +94,11 @@
   .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
   .dot.ok { background:var(--green); } .dot.warn { background:var(--amber); }
   .dot.off { background:var(--line); }
-  .btn { background:var(--accent); border:none; color:#fff; border-radius:8px; height:32px;
+  .btn { background:var(--accent); border:none; color:#06130b; border-radius:8px; height:32px;
          padding:0 15px; font:inherit; font-size:13px; font-weight:600; cursor:pointer;
          text-decoration:none; display:inline-flex; align-items:center; }
   .btn:hover { filter:brightness(1.1); }
-  .btn.danger { background:var(--red); }
+  .btn.danger { background:var(--red); color:#fff; }
   .btn.green { background:var(--green); }
   .empty { text-align:center; color:var(--muted); padding:64px 16px; font-size:13.5px; }
   .empty svg { width:36px; height:36px; margin-bottom:12px; opacity:.5; }
@@ -123,7 +124,7 @@
   .art { width:106px; height:50px; border-radius:7px; object-fit:cover; flex:none;
          background:var(--bg-inset); }
   .recap-game { font-size:15px; font-weight:600; }
-  .recap-duration { font-size:21px; font-weight:700; color:var(--accent2);
+  .recap-duration { font-size:21px; font-weight:700; color:var(--text);
                     margin-left:auto; flex:none; font-variant-numeric:tabular-nums; }
   .back { color:var(--muted); text-decoration:none; font-size:12.5px; font-weight:500;
           display:inline-flex; align-items:center; gap:6px; margin-bottom:14px; }
@@ -136,7 +137,7 @@
                background:linear-gradient(180deg, transparent, var(--bg-card) 88%); }
   .hero-body { position:relative; padding:26px 24px 20px; }
   .hero .game { font-size:19px; font-weight:700; }
-  .hero .dur { font-size:40px; font-weight:800; color:var(--accent2); line-height:1.15;
+  .hero .dur { font-size:40px; font-weight:800; color:var(--text); line-height:1.15;
                font-variant-numeric:tabular-nums; }
   .hero .meta { color:var(--muted); margin-top:4px; font-size:12.5px; }
   .stat-row { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
@@ -149,7 +150,7 @@
   /* connectors */
   .conn-actions { margin-top:12px; padding-top:12px; border-top:1px solid var(--line-soft);
                   display:flex; gap:8px; }
-  .fab { position:fixed; right:26px; bottom:24px; background:var(--green); color:#fff;
+  .fab { position:fixed; right:26px; bottom:24px; background:var(--green); color:#06130b;
          border:none; border-radius:10px; height:40px; padding:0 18px; font:inherit;
          font-size:13.5px; font-weight:600; cursor:pointer; box-shadow:0 10px 28px #0007; z-index:9;
          display:inline-flex; align-items:center; gap:7px; }

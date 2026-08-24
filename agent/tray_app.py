@@ -342,7 +342,7 @@ def run_window() -> None:
     config = load_config()
     window = webview.create_window(
         "GameGate", build_window_url(config),
-        width=1080, height=760, background_color="#0f1014",
+        width=1080, height=760, background_color="#0e1011",
     )
     webview.start(_window_chrome, window)
 

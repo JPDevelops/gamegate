@@ -8,12 +8,12 @@ Design: dark rounded badge, purple portal ring, state-colored core.
 SUPERSAMPLE = 4
 BASE = 64  # logical size; ICO gets multiple sizes
 
-BADGE_BG = (23, 24, 31, 255)
-RING = (124, 58, 237, 255)          # GameGate purple
+BADGE_BG = (16, 19, 18, 255)
+RING = (46, 224, 111, 255)          # Guardian signal green
 STATE_COLORS = {
-    "available": (59, 165, 93, 255),
-    "gaming": (167, 139, 250, 255),
-    "focused": (216, 60, 62, 255),
+    "available": (140, 148, 143, 255),   # neutral: nothing to guard
+    "gaming": (46, 224, 111, 255),       # green: the gate is protecting you
+    "focused": (229, 72, 77, 255),       # red: do not disturb
 }
 
 
