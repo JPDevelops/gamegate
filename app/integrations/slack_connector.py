@@ -86,7 +86,7 @@ def run_socket_mode(api) -> None:
     )
 
     def _listener(sm_client: SocketModeClient, request: SocketModeRequest) -> None:
-        # Ack policy (Vega round 2): ack when ingested or deliberately
+        # Ack policy: ack when ingested or deliberately
         # ignored; do NOT ack failures — the missing ack makes Slack
         # redeliver, and (source, external_id) idempotency absorbs replays.
         outcome = "ignored"

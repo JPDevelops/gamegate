@@ -1,12 +1,14 @@
-"""GameGate desktop app — tray icon + native Windows toast notifications.
+"""GameGate desktop app — tray icon + break-through notification surface.
 
-THE notification surface (PO decision 2026-08-23: Discord is not the
-notifier). Runs on the gaming PC alongside the detector, which it starts in a
-background thread. Polls the GameGate API for pending break-through
-notifications and digests, shows them as Windows toasts, and acks AFTER a
-successful show — same send-then-ack reliability contract as every other
-delivery path: if the app is closed, items queue server-side and arrive when
-it's back.
+The desktop app is the notification surface (not Discord; PO decision
+2026-08-23). It shows break-throughs via a Tkinter overlay by default —
+Focus-Assist-immune, so it reaches you mid-game — and can use native Windows
+toasts instead when config sets `"notifier": "toast"`. Runs on the gaming PC
+alongside the detector, which it starts in a background thread. Polls the
+GameGate API for pending break-through notifications and digests, shows each,
+and acks AFTER a successful show — same send-then-ack reliability contract as
+every other delivery path: if the app is closed, items queue server-side and
+arrive when it's back.
 
 Run:       python tray_app.py             (uses agent/config.json)
 Package:   see docs/DESKTOP_APP.md (PyInstaller one-file GameGate.exe)
@@ -120,7 +122,7 @@ class ToastPump:
     """Poll pending items → show toast → ack. Ack only after a successful
     show, so a failed/closed notifier never loses anything. User settings
     (sound, duration) are fetched from the server and applied only when the
-    settings version changes (Orion: version-gated)."""
+    settings version changes (version-gated)."""
 
     MAX_SHOW_ATTEMPTS = 3
 
@@ -174,12 +176,18 @@ class ToastPump:
         self._apply_settings()
         delivered = 0
         for notification in self.api.pending_notifications():
+            nid = notification.get("id")
+            if nid is None:  # a malformed server row must not abort the whole cycle
+                continue
             title, body = notification_title_body(notification.get("event", {}))
-            if self._show_or_drop(notification["id"], title, body, self.api.ack_notification):
+            if self._show_or_drop(nid, title, body, self.api.ack_notification):
                 delivered += 1
         for digest in self.api.pending_digests():
+            did = digest.get("id")
+            if did is None:
+                continue
             title, body = digest_title_body(digest)
-            if self._show_or_drop(digest["id"], title, body, self.api.ack_digest):
+            if self._show_or_drop(did, title, body, self.api.ack_digest):
                 delivered += 1
         return delivered
 
@@ -457,14 +465,14 @@ def run_tray() -> None:
                 pump.run_once()
                 status = api.get_status()
                 if status:
-                    icon.icon = icons.get(status["state"], icons["available"])
+                    icon.icon = icons.get(status.get("state"), icons["available"])
             except Exception:
                 log.exception("Pump cycle failed")
             stop.wait(POLL_SECONDS)
 
     def on_status(icon, _item):
         status = api.get_status()
-        state = status["state"] if status else "API unreachable"
+        state = status.get("state", "unknown") if status else "API unreachable"
         notify("GameGate status", str(state), duration_s=pump.duration_s, sound=pump.sound)
 
     def on_digest(icon, _item):

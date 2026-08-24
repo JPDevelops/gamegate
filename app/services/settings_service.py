@@ -1,4 +1,4 @@
-"""Typed, validated user settings (Orion: schema, not loose key-value).
+"""Typed, validated user settings (schema, not loose key-value).
 
 Stored in the settings table as strings; this layer owns types, defaults,
 bounds, and a monotonically increasing version so clients apply changes only

@@ -3,8 +3,11 @@
 GET /app          — the single-page dashboard. First visit uses ?key=<api
                     token> which is exchanged for an HttpOnly cookie (the
                     link never has to be shared again on that browser).
-GET /connections  — real per-connector status: connected / needs setup /
-                    disabled — never fake universal connectivity.
+GET /connections  — per-connector *configured* status: enabled (credentials
+                    present + flag on) / needs setup / disabled. This reflects
+                    configuration, NOT live health — it can't tell you a token
+                    was rejected or a connector process crashed (that needs
+                    heartbeats, a later addition). It never fakes connectivity.
 GET /digests      — digest history for the Inbox tab.
 """
 import os
@@ -137,7 +140,7 @@ def connections(
     slack = (
         {"state": "connected", "detail": "Socket Mode"}
         if os.environ.get("SLACK_ENABLED", "").lower() == "true"
-        else {"state": "disabled", "detail": "Skipped for v0.1 (product decision)"}
+        else {"state": "disabled", "detail": "Skipped for now (product decision)"}
     )
 
     classifier = (

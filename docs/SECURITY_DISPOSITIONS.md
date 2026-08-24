@@ -1,10 +1,10 @@
-# Security dispositions — v0.1 (lab deployment)
+# Security dispositions — personal deployment (v0.2)
 
-Runbook Step 14 asks every deployment choice to be deliberate. These are the open
-security items, each with an explicit decision for the v0.1 lab context (one user,
+Every deployment choice should be deliberate. These are the open security items,
+each with an explicit decision for the current single-user context (one user,
 one server, LAN + one WAN port) and its revisit trigger.
 
-| # | Item | v0.1 decision | Rationale | Revisit when |
+| # | Item | Decision | Rationale | Revisit when |
 |---|------|---------------|-----------|--------------|
 | #26 | TLS at Nginx | **Done — TLS live on 443** | Let's Encrypt cert via sslip.io; the HTTPS endpoint is what the dashboard and clients use (`nginx/gamegate-tls.conf`). Port 80 serves no plain-HTTP API — it only answers ACME challenges and `301`-redirects everything else to HTTPS (`nginx/gamegate.conf`). | Retire the port-80 listener entirely once ACME no longer needs it. |
 | #27 | Scoped per-component tokens | **Accepted risk for lab** | All clients are owned by the same person on the same trust level today; compromise of any device already means owner-level compromise. | First moment two components have different trust levels (e.g. SaaS, shared server, or a connector on third-party infra). |
@@ -48,7 +48,7 @@ no exception.
 | 11 | Rate limit login | ✅ AuthRateLimitMiddleware throttles repeated 401s per IP |
 | 12 | Bot protection | Unauthenticated routes are limited to /health, the OAuth callback (state-protected), /logout, and /docs+/openapi (development only); every data/write route requires the token. No public forms |
 | 13 | Parameterize queries | ✅ all SQL uses ? placeholders (only fixed-table-name DELETE excepted) |
-| 14 | Validate all input | ✅ Pydantic on every request body; enums 422 bad values |
+| 14 | Validate all input | ✅ Typed Pydantic models or explicit server-side validation on every accepted input (e.g. `/settings` validates an untyped patch dict against per-key definitions); enums 422 bad values |
 | 15 | Escape user content | ⚠️ Partial. esc() (escapes & < > " ') covers dashboard TEXT sinks; attacker-controlled fields (sender/title) land in text context and are escaped. BUT esc() is HTML-entity escaping and the template also interpolates ids into inline `onclick="…'${esc(id)}'…"` handlers — the wrong escaper for a JS-string sink. Not exploitable today only because those ids are server-generated uuids, not user input. Real fix is tracked (M24: drop CSP `unsafe-inline`, move handlers to addEventListener). Do NOT add a user-controlled value to an inline handler until then. Overlay is tkinter (no HTML sink). |
 | 16 | Restrict file uploads | N/A — no uploads |
 | 17 | Trim API responses | Partial: /events, /status, /health, classify use a typed response_model; the dashboard/settings/connector routes return plain dicts assembled server-side (no model leakage, but not schema-typed) |

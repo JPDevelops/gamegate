@@ -1,4 +1,6 @@
-"""Data access layer. All SQL lives here — routes and services never touch it."""
+"""Data access layer — where nearly all SQL lives. Two deliberate exceptions
+own their queries: StatusService._close_session()'s transactional unit of work,
+and the /art and /data/clear maintenance routes."""
 import json
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -33,7 +35,7 @@ class EventRepository:
         conn = self.db.connection()
         # ON CONFLICT DO NOTHING makes concurrent duplicate posts race-safe:
         # whoever loses the race gets rowcount 0 and returns the stored
-        # original instead of a 500 (Vega audit #3).
+        # original instead of a 500.
         with conn:
             cursor = conn.execute(
                 "INSERT INTO events (id, source, external_id, sender, title, content,"
@@ -83,9 +85,11 @@ class EventRepository:
         return [self._to_event(r) for r in rows]
 
     def undelivered(self, limit: int = 1000) -> list[Event]:
-        # Cap the batch so one digest can't pull an unbounded backlog (e.g. a
-        # weekend of 'away' with thousands of queued mails). The remainder stays
-        # delivered=0 and rolls into the next digest (review "bound the unbounded").
+        # Cap the batch so one caller can't pull an unbounded backlog (e.g. a
+        # weekend of 'away' with thousands of queued mails). NOTE: the recap uses
+        # undelivered_in_window(), not this method, so an out-of-window backlog
+        # is filtered in SQL and can't starve a game's messages. This plain
+        # method is used where a bounded view of everything pending is wanted.
         rows = self.db.connection().execute(
             "SELECT * FROM events WHERE delivered = 0 AND priority != 'ignore'"
             " ORDER BY created_at ASC, rowid ASC LIMIT ?", (limit,)
@@ -102,8 +106,10 @@ class EventRepository:
         out-of-window 'away'/'focused' events that never get consumed. Doing the
         window filter in Python after `undelivered()` would let ≥1000 old queued
         events starve a game's real messages out of its recap (review MAJOR:
-        LIMIT-before-filter). received_at is stored as UTC isoformat, so the ISO
-        string BETWEEN compares chronologically."""
+        LIMIT-before-filter). received_at is normalized to a UTC offset at the
+        model boundary (Event._tz_aware uses astimezone), so every stored value
+        shares the '+00:00' offset and the ISO-string BETWEEN compares
+        chronologically."""
         rows = self.db.connection().execute(
             "SELECT * FROM events WHERE delivered = 0 AND priority != 'ignore'"
             " AND received_at >= ? AND received_at <= ?"

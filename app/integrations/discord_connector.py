@@ -119,22 +119,37 @@ def format_notification(event: dict) -> str:
 class DeliveryPump:
     """Pushes pending digests and break-through notifications to Discord.
 
-    Ack AFTER a successful send: if Discord is down, items stay pending and
-    are retried on the next pump cycle. Ack-once semantics on the API side
-    prevent double-delivery."""
+    Delivery is at-least-once. If Discord is down, an item stays pending and is
+    retried next cycle. If a send SUCCEEDS but the follow-up ack fails, we must
+    NOT re-post to Discord every cycle — so a per-process 'already sent' set
+    means we only retry the ack, not the send (review MAJOR: resend storm). A
+    process restart between send and ack can still re-post once (the honest
+    limit of at-least-once without a persisted outbound id)."""
 
     def __init__(self, api: GameGateApi, send_fn) -> None:
         self.api = api
         self.send = send_fn
+        self._sent_notifications: set = set()
+        self._sent_digests: set = set()
 
     def run_once(self) -> int:
         delivered = 0
         for notification in self.api.pending_notifications():
-            sent = self.send(format_notification(notification["event"]))
-            if sent and self.api.ack_notification(notification["id"]):
+            nid = notification["id"]
+            if nid not in self._sent_notifications:
+                if not self.send(format_notification(notification["event"])):
+                    continue  # send failed — retry the whole item next cycle
+                self._sent_notifications.add(nid)   # sent once; only ack may retry
+            if self.api.ack_notification(nid):
+                self._sent_notifications.discard(nid)
                 delivered += 1
         for digest in self.api.pending_digests():
-            sent = self.send(digest.get("text", "Digest ready."))
-            if sent and self.api.ack_digest(digest["id"]):
+            did = digest["id"]
+            if did not in self._sent_digests:
+                if not self.send(digest.get("text", "Digest ready.")):
+                    continue
+                self._sent_digests.add(did)
+            if self.api.ack_digest(did):
+                self._sent_digests.discard(did)
                 delivered += 1
         return delivered

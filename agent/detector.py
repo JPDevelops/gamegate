@@ -76,7 +76,18 @@ def load_config(path: str | None = None) -> dict:
     config = dict(DEFAULT_CONFIG)
     config_path = Path(path) if path else app_dir() / "config.json"
     if config_path.exists():
-        config.update(json.loads(config_path.read_text()))
+        try:
+            loaded = json.loads(config_path.read_text())
+        except (ValueError, OSError) as exc:
+            # A hand-edited config.json with a stray comma shouldn't brick the
+            # whole tray app with a raw traceback — fall back to defaults and
+            # log it so the user can fix the file (review: unguarded config load).
+            logging.getLogger("gamegate.detector").warning(
+                "Ignoring unreadable config at %s (%s); using defaults", config_path, exc
+            )
+            loaded = {}
+        if isinstance(loaded, dict):
+            config.update(loaded)
     config["game_processes"] = [p.lower() for p in config["game_processes"]]
     config["ignore_processes"] = [p.lower() for p in config.get("ignore_processes", [])]
     return config

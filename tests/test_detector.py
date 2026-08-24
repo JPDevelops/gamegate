@@ -80,6 +80,18 @@ def test_plain_desktop_is_not_gaming():
     assert detect_game(DESKTOP, [], True, no_steam) is None
 
 
+def test_malformed_config_falls_back_to_defaults(tmp_path):
+    """A hand-edited config.json with bad JSON must not brick startup with a raw
+    traceback — load_config logs and returns defaults (review: unguarded load)."""
+    from detector import load_config
+
+    bad = tmp_path / "config.json"
+    bad.write_text('{"game_processes": ["x.exe",]}')  # trailing comma → invalid JSON
+    config = load_config(str(bad))
+    assert isinstance(config, dict)
+    assert "game_processes" in config and isinstance(config["game_processes"], list)
+
+
 # --- Detector transitions --------------------------------------------------
 
 def make_detector(api, initial_processes):

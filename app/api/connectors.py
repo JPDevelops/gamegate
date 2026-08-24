@@ -173,6 +173,6 @@ def connect(name: str) -> dict:
     if name == "slack":
         raise HTTPException(
             status_code=409,
-            detail="Slack ships in a later version (product decision for v0.1)",
+            detail="Slack ships in a later version (product decision)",
         )
     raise HTTPException(status_code=404, detail=f"Unknown connector {name!r}")

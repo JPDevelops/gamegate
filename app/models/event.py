@@ -33,11 +33,15 @@ class EventIn(BaseModel):
     @field_validator("received_at")
     @classmethod
     def _tz_aware(cls, v: datetime) -> datetime:
-        """Coerce naive timestamps to UTC (so downstream sorting never mixes
-        naive and aware datetimes and 500s the digest) and clamp a future
+        """Normalize every timestamp to UTC — naive ones get UTC attached, aware
+        ones are CONVERTED (astimezone), not just relabeled — so the stored
+        isoformat is always '+00:00'. The recap window query compares received_at
+        as ISO strings in SQLite, which only orders chronologically when every
+        value shares the UTC offset; a preserved '-07:00' would sort by its wall
+        clock, not its instant, and land in the wrong recap. Also clamp a future
         timestamp to now — a future date would never be 'stale' and would defeat
-        the freshness gate, turning every held message into an interruption (M12)."""
-        v = v.replace(tzinfo=UTC) if v.tzinfo is None else v
+        the freshness gate, turning every held message into an interruption."""
+        v = v.replace(tzinfo=UTC) if v.tzinfo is None else v.astimezone(UTC)
         now = datetime.now(UTC)
         return now if v > now + timedelta(minutes=5) else v
 

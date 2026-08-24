@@ -2,7 +2,9 @@
 
 Run: python -m app.integrations.discord_bot
 Env: DISCORD_BOT_TOKEN, GAMEGATE_DISCORD_CHANNEL_ID (delivery channel),
-     GAMEGATE_API_URL (default http://127.0.0.1:8000), GAMEGATE_API_TOKEN
+     GAMEGATE_API_URL (default http://127.0.0.1:8000), GAMEGATE_API_TOKEN,
+     GAMEGATE_DISCORD_INGEST_CHANNELS (optional comma-separated channel-id
+     allowlist; when set, only those channels are ingested — unset = whole guild)
 Commands in the test server: !status  !digest
 """
 import asyncio
@@ -25,7 +27,7 @@ PUMP_INTERVAL_SECONDS = 15
 
 
 def build_client() -> discord.Client:
-    # Fail closed (Nebula round 2): without a configured guild and owner,
+    # Fail closed: without a configured guild and owner,
     # the bot would trust every server it's in and answer anyone.
     if not int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0")):
         raise RuntimeError("GAMEGATE_DISCORD_GUILD_ID is required")
@@ -43,6 +45,15 @@ def build_client() -> discord.Client:
     delivery_channel_id = int(os.environ.get("GAMEGATE_DISCORD_CHANNEL_ID", "0"))
     allowed_guild_id = int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0"))
     owner_id = int(os.environ.get("GAMEGATE_OWNER_DISCORD_ID", "0"))
+    # Optional least-privilege ingestion scope: a comma-separated allowlist of
+    # channel ids. When set, ONLY those channels are ingested (everything else in
+    # the guild is ignored) — so the bot doesn't slurp every readable channel's
+    # traffic into GameGate. Unset keeps the prior behavior (whole guild), so an
+    # existing deployment is unchanged until the owner opts in.
+    ingest_channels = {
+        int(c) for c in os.environ.get("GAMEGATE_DISCORD_INGEST_CHANNELS", "").split(",")
+        if c.strip().isdigit()
+    }
     no_mentions = discord.AllowedMentions.none()
     pump_started = {"done": False}
 
@@ -51,7 +62,7 @@ def build_client() -> discord.Client:
         log.info("Connected as %s", client.user)
         # Delivery is the desktop app's job (PO decision 2026-08-23); this pump
         # only runs if explicitly re-enabled. on_ready fires again after
-        # reconnects — one pump only (Vega audit #5).
+        # reconnects — one pump only.
         deliver = os.environ.get("GAMEGATE_DISCORD_DELIVERY", "false").lower() == "true"
         if deliver and not pump_started["done"]:
             pump_started["done"] = True
@@ -99,13 +110,13 @@ def build_client() -> discord.Client:
         if message.author.bot:
             return
         # Only the configured guild is trusted — no other server's users can
-        # query digests or feed events into GameGate (Nebula audit #4).
+        # query digests or feed events into GameGate.
         if message.guild is None or (
             allowed_guild_id and message.guild.id != allowed_guild_id
         ):
             return
         text = message.content.strip()
-        # Commands expose digest/status data — owner only (Nebula round 2).
+        # Commands expose digest/status data — owner only.
         if text in ("!status", "!digest") and message.author.id != owner_id:
             return
         if text == "!status":
@@ -131,6 +142,10 @@ def build_client() -> discord.Client:
         # toggles it) — so "disconnect" stops ingestion without the API needing
         # sudo to stop the service (review B2). Commands above still work.
         if not connector_enabled("discord"):
+            return
+        # Least-privilege ingestion: if an allowlist is configured, only ingest
+        # from those channels (review MAJOR: bot ingested every readable channel).
+        if ingest_channels and getattr(message.channel, "id", None) not in ingest_channels:
             return
         payload = normalize_message(
             str(message.id),
