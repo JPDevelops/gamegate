@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest that gives GameGate a real Windows app identity, so it installs
+  like a normal app (Start menu, Apps list) AND can be granted the OS
+  notification-listener permission (which a bare .exe can't). It packages the
+  existing full-trust Win32 GameGate.exe (Desktop Bridge / runFullTrust).
+
+  IMPORTANT: the Publisher below MUST exactly match the subject of the signing
+  certificate. build-msix.ps1 creates a self-signed cert with this same subject
+  by default. If you change one, change both.
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap rescap">
+
+  <Identity
+      Name="JPDevelops.GameGate"
+      Publisher="CN=JPDevelops"
+      Version="0.2.0.0"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>GameGate</DisplayName>
+    <PublisherDisplayName>JPDevelops</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Game now, catch up after — GameGate holds your notifications while you play and hands you one clean recap.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="GameGate" Executable="GameGate.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+          DisplayName="GameGate"
+          Description="Holds your notifications while you game, breaks through for emergencies, and delivers one post-game recap."
+          BackgroundColor="#101312"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+            Wide310x150Logo="Assets\Wide310x150Logo.png"
+            Square310x310Logo="Assets\Square310x310Logo.png"
+            Square71x71Logo="Assets\Square71x71Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#101312" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Win32 exe running with full trust inside the package (Desktop Bridge). -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
