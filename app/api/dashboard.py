@@ -116,11 +116,16 @@ def digest_history(
     return digests
 
 
+HEARTBEAT_STALE_SECONDS = 300  # ~missed several beats (gmail ~120s, discord ~60s)
+
+
 def _apply_health(conn: dict, health: dict | None) -> dict:
-    """Downgrade a 'connected' connector to 'degraded' when its last heartbeat
-    was an error more recent than its last success — so the dashboard reflects
-    live health, not just the enable flag (review MAJOR). Also surface the last
-    error detail. Unknown health (no heartbeat yet) leaves the state untouched."""
+    """Downgrade a 'connected' connector to 'degraded' when live health says so —
+    so the dashboard reflects reality, not just the enable flag (review MAJOR).
+    Two degrade paths: (a) the last heartbeat was an ERROR more recent than the
+    last success, and (b) no heartbeat at all for a while, which is how a crashed
+    or OOM-killed connector looks — a silent death, not an error (review MINOR).
+    Unknown health (never beat yet, e.g. just started) stays optimistic."""
     if conn.get("state") != "connected" or not health:
         return conn
     last_ok = health.get("last_success")
@@ -128,7 +133,19 @@ def _apply_health(conn: dict, health: dict | None) -> dict:
     if last_err and (not last_ok or last_err > last_ok):
         conn["state"] = "degraded"
         conn["detail"] = f"Last run errored: {health.get('error_detail') or 'unknown'}"[:200]
-    elif last_ok:
+        return conn
+    updated = health.get("updated_at")
+    if updated:
+        from datetime import UTC, datetime
+        try:
+            age = (datetime.now(UTC) - datetime.fromisoformat(updated)).total_seconds()
+        except ValueError:
+            age = 0
+        if age > HEARTBEAT_STALE_SECONDS:
+            conn["state"] = "degraded"
+            conn["detail"] = f"No heartbeat for {int(age) // 60} min — connector may be down"
+            return conn
+    if last_ok:
         conn["detail"] = f"{conn['detail']} (last ok {last_ok[:19]}Z)"
     return conn
 
@@ -182,7 +199,7 @@ def connections(
 
     classifier = (
         {"state": "connected",
-         "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-5-mini')} — "
+         "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-4o-mini')} — "
                    "deterministic fallback always on",
          "can_disconnect": True}
         if os.environ.get("CLASSIFIER_ENABLED", "").lower() == "true"

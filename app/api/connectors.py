@@ -187,6 +187,9 @@ class Heartbeat(BaseModel):
     detail: str | None = None
 
 
+_HEARTBEAT_CONNECTORS = {"gmail", "discord", "slack", "classifier"}
+
+
 @router.post("/connectors/{name}/heartbeat")
 def heartbeat(
     name: str,
@@ -195,6 +198,10 @@ def heartbeat(
 ) -> dict:
     """A connector reports liveness each poll: ok=true on a successful cycle,
     ok=false (with detail) on an error. The dashboard reads this so 'connected'
-    reflects a working connector, not just an enable flag (review MAJOR)."""
+    reflects a working connector, not just an enable flag (review MAJOR).
+    Restricted to known connector names so a caller can't seed arbitrary health
+    rows (review: heartbeat accepts any name)."""
+    if name not in _HEARTBEAT_CONNECTORS:
+        raise HTTPException(status_code=404, detail=f"Unknown connector {name!r}")
     health.record(name, beat.ok, beat.detail)
     return {"recorded": name}

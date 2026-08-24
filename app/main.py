@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -40,10 +41,12 @@ async def lifespan(app: FastAPI):
 
 
 # Interactive docs (/docs, /redoc, /openapi.json) are open by default and would
-# hand an unauthenticated caller the full endpoint inventory. Enable them only
-# in development; disable in production so "only /health is open" is actually
-# true (M4).
-_docs_enabled = get_settings().env != "production"
+# hand an unauthenticated caller the full endpoint inventory. Enable them ONLY
+# when GAMEGATE_ENV is EXPLICITLY "development" (same fail-closed gate as the
+# token startup guard) — so a bare `uvicorn app.main:app` with the env var unset
+# does not silently expose the inventory the way `env != "production"` did
+# (review MINOR: /docs open by default).
+_docs_enabled = get_settings().explicit_dev
 app = FastAPI(
     title="GameGate",
     version=__version__,
@@ -96,8 +99,10 @@ def ready() -> JSONResponse:
 
     try:
         get_database().connection().execute("SELECT 1 FROM status LIMIT 1").fetchone()
-    except Exception as exc:  # noqa: BLE001 — any DB failure is 'not ready'
-        return JSONResponse(
-            {"status": "not-ready", "detail": str(exc)}, status_code=503
-        )
+    except Exception:  # noqa: BLE001 — any DB failure is 'not ready'
+        # Return a FIXED public response — never the raw exception text, which
+        # could leak schema/path/migration details to an unauthenticated caller
+        # (review LOW: /ready info disclosure). The detail is logged server-side.
+        logging.getLogger("gamegate").exception("Readiness check failed")
+        return JSONResponse({"status": "not-ready"}, status_code=503)
     return JSONResponse({"status": "ready", "version": __version__})

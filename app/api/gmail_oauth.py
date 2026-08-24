@@ -12,7 +12,9 @@ Notes:
 - Google requires an HTTPS redirect URI — served via the sslip.io TLS host.
 - Only the readonly scope is ever requested.
 """
+import base64
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -38,7 +40,16 @@ AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 STATE_TTL_SECONDS = 600
 
-_pending_states: dict[str, float] = {}
+# state -> (expiry, pkce_code_verifier). PKCE (RFC 7636) binds the auth request
+# to the token exchange: even if an authorization code is intercepted, it's
+# useless without the verifier, which never leaves the server (review: no PKCE).
+_pending_states: dict[str, tuple[float, str]] = {}
+
+
+def _pkce_challenge(verifier: str) -> str:
+    """S256 code_challenge = base64url(sha256(verifier)), no padding."""
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
 def _oauth_config() -> tuple[str, str, str]:
@@ -56,35 +67,37 @@ def _oauth_config() -> tuple[str, str, str]:
     return client_id, client_secret, redirect_uri
 
 
-def _issue_state() -> str:
+def _issue_state() -> tuple[str, str]:
+    """Return (state, code_challenge). Stores the state with its PKCE verifier."""
     now = time.time()
-    for state, expiry in list(_pending_states.items()):
+    for state, (expiry, _v) in list(_pending_states.items()):
         if expiry < now:
             del _pending_states[state]
     state = secrets.token_urlsafe(24)
-    _pending_states[state] = now + STATE_TTL_SECONDS
-    return state
+    verifier = secrets.token_urlsafe(48)  # 43-128 chars per RFC 7636
+    _pending_states[state] = (now + STATE_TTL_SECONDS, verifier)
+    return state, _pkce_challenge(verifier)
 
 
 def exchange_code(
     code: str, client_id: str, client_secret: str, redirect_uri: str,
-    http: httpx.Client | None = None,
+    http: httpx.Client | None = None, code_verifier: str | None = None,
 ) -> dict:
     """Exchange the authorization code for tokens. Raises HTTPException on
     any provider failure — the browser sees a clear error, nothing is stored."""
     client = http or httpx.Client(timeout=15)
     owns_client = http is None  # close only the client we created (N31)
+    data = {
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    if code_verifier:
+        data["code_verifier"] = code_verifier  # PKCE: prove we started this flow
     try:
-        response = client.post(
-            TOKEN_URL,
-            data={
-                "code": code,
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code",
-            },
-        )
+        response = client.post(TOKEN_URL, data=data)
         response.raise_for_status()
         return response.json()
     except httpx.HTTPError as exc:
@@ -141,6 +154,7 @@ def connect_gmail(
     if expected and not authed:
         raise HTTPException(status_code=401, detail="key query parameter required")
     client_id, _secret, redirect_uri = _oauth_config()
+    state, challenge = _issue_state()
     params = urlencode(
         {
             "client_id": client_id,
@@ -149,7 +163,9 @@ def connect_gmail(
             "scope": SCOPE,
             "access_type": "offline",   # we need a refresh token
             "prompt": "consent",
-            "state": _issue_state(),
+            "state": state,
+            "code_challenge": challenge,       # PKCE (RFC 7636)
+            "code_challenge_method": "S256",
         }
     )
     return RedirectResponse(f"{AUTH_URL}?{params}", status_code=307)
@@ -163,12 +179,15 @@ def gmail_callback(code: str = "", state: str = "", error: str = "") -> HTMLResp
     # Cleanup otherwise only runs when a NEW state is issued, so without this a
     # captured state would stay valid indefinitely if no further /connect/gmail
     # ever happened. pop() removes it whether or not it is expired.
-    expiry = _pending_states.pop(state, None) if code else None
-    if expiry is None or expiry < time.time():
+    pending = _pending_states.pop(state, None) if code else None
+    if pending is None or pending[0] < time.time():
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+    _expiry, verifier = pending
 
     client_id, client_secret, redirect_uri = _oauth_config()
-    tokens = exchange_code(code, client_id, client_secret, redirect_uri)
+    tokens = exchange_code(
+        code, client_id, client_secret, redirect_uri, code_verifier=verifier
+    )
     path = write_token_file(tokens, client_id, client_secret)
     log.info("Gmail connected; token stored at %s", path)
     return HTMLResponse(

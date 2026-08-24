@@ -211,28 +211,21 @@ class ToastPump:
 
 
 class DndController:
-    """Manual do-not-disturb: overrides state via the normal /status API.
-
-    While DND is active the detector must not fight the override (it would
-    re-post gaming/available on its next transition), so the tray pauses the
-    detector and re-syncs it on release."""
+    """Manual do-not-disturb via the dashboard-authoritative override endpoint
+    (POST /status/dnd), the SAME mechanism the web dashboard uses — so the two
+    DND surfaces agree. The server holds the override and won't let a detector
+    poll clobber it, and it re-opens the session itself when DND clears while
+    still gaming, so the tray no longer has to pause the detector or fiddle with
+    its last_reported_state (review: two divergent DND mechanisms)."""
 
     def __init__(self, api: ApiClient, detector=None) -> None:
         self.api = api
-        self.detector = detector
+        self.detector = detector  # kept for signature compatibility; unused now
         self.active = False
 
     def toggle(self) -> bool:
-        if self.active:
-            if self.api.post_status("available", None, None):
-                self.active = False
-                if self.detector is not None:
-                    # Forget the last report so the next poll re-syncs the
-                    # true state (e.g. a game that started during DND).
-                    self.detector.last_reported_state = None
-        else:
-            if self.api.post_status("focused", None, None):
-                self.active = True
+        if self.api.set_dnd(not self.active):
+            self.active = not self.active
         return self.active
 
 

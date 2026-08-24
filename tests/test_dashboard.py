@@ -108,6 +108,29 @@ def test_connector_heartbeat_drives_health(client, monkeypatch, tmp_path):
     assert "token expired" in gmail["detail"]
 
 
+def test_silent_connector_goes_stale(client, monkeypatch, tmp_path):
+    """MINOR: a connector that crashes/OOMs just STOPS beating (no error). An old
+    last_success must show 'degraded/stale', not a permanent green connected."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.db import get_database
+
+    token = tmp_path / "token.json"
+    token.write_text("{}")
+    monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("GMAIL_ENABLED", "true")
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token))
+
+    old = (datetime.now(UTC) - timedelta(hours=1)).isoformat()  # last beat an hour ago
+    with get_database().connection() as conn:
+        conn.execute(
+            "INSERT INTO connector_health (name, last_success, updated_at)"
+            " VALUES ('gmail', ?, ?)", (old, old))
+    gmail = client.get("/connections").json()["gmail"]
+    assert gmail["state"] == "degraded"
+    assert "No heartbeat" in gmail["detail"]
+
+
 def test_digest_history_lists_recent_with_rendered_text(client):
     client.post("/status", json={"state": "gaming", "application": "g.exe"})
     client.post("/status", json={"state": "available"})

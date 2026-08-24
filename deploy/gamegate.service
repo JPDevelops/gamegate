@@ -20,9 +20,22 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/home/ubuntu/Project/gamegate /home/ubuntu/Project/gamegate-data
 PrivateTmp=true
+PrivateDevices=true
 ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
 RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+# The service only speaks IP + local unix sockets; deny exotic address families
+# so a compromised process can't open AF_PACKET/AF_NETLINK raw sockets (review:
+# broaden systemd sandboxing). MemoryDenyWriteExecute is intentionally NOT set —
+# it breaks CPython.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # --no-access-log: uvicorn's default access log writes the full request line
 # (including /app?key=<token>) to journald in cleartext. nginx logs are already
 # scrubbed; this closes the second copy (review M5).

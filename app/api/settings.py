@@ -51,5 +51,10 @@ def clear_data(confirm: Annotated[str, Body(embed=True)] = "") -> dict:
         counts = {}
         for table in ("notifications", "digests", "events", "sessions"):
             counts[table] = conn.execute(f"DELETE FROM {table}").rowcount
-        conn.execute("UPDATE status SET state='available', application=NULL, started_at=NULL")
+        # Reset override_state too (review NITPICK): a data wipe while DND is on
+        # must not leave the status pinned to the manual override.
+        conn.execute(
+            "UPDATE status SET state='available', application=NULL, started_at=NULL,"
+            " override_state=NULL"
+        )
     return {"cleared": counts}

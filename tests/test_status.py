@@ -203,10 +203,38 @@ def test_enabling_dnd_while_gaming_closes_the_session(client):
     assert len(_digests(client)) == 1
 
 
-def test_dnd_off_lets_detector_reopen_a_session(client):
-    """After DND clears, the next detector gaming poll opens a fresh session."""
+def test_turning_dnd_off_mid_game_reopens_the_session_without_a_detector_repost(client):
+    """MAJOR regression: the real detector only POSTs on a transition, so if the
+    same game keeps running across a DND window it does NOT re-announce 'gaming'.
+    Turning DND off must therefore re-open the session ITSELF, so the post-DND
+    stretch still gets recapped. The old code left base state 'gaming' with no
+    session and silently lost that recap (this test does NOT re-POST gaming)."""
+    # gaming, then DND on mid-game (recaps what was played), then DND off — with
+    # NO further /status from the detector (the game never stopped).
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    client.post("/status/dnd", json={"enabled": True})
+    assert len(_digests(client)) == 1            # recap of the pre-DND play
+    client.post("/status/dnd", json={"enabled": False})
+    # The session must be open again now, WITHOUT the detector re-posting.
+    assert client.get("/status").json()["state"] == "gaming"
+    # A message arriving during the post-DND stretch is captured by that session…
+    from datetime import UTC, datetime
+
+    from tests.test_events import make_event
+    client.post("/events", json=make_event(
+        external_id="post-dnd", title="AFTER-DND", priority="informational",
+        requires_action=False, received_at=datetime.now(UTC).isoformat()))
+    # …and folded into a SECOND recap when the game finally ends.
+    client.post("/status", json={"state": "available"})
+    import json as _json
+    assert len(_digests(client)) == 2
+    latest = client.get("/digest/latest").json()
+    assert "AFTER-DND" in _json.dumps(latest["items"])
+
+
+def test_dnd_off_when_not_gaming_opens_no_session(client):
+    """Symmetric: clearing DND while merely available opens nothing."""
     client.post("/status/dnd", json={"enabled": True})
     client.post("/status/dnd", json={"enabled": False})
-    client.post("/status", json={"state": "gaming", "application": "g.exe"})
     client.post("/status", json={"state": "available"})
-    assert len(_digests(client)) == 1      # a normal recap after DND is done
+    assert _digests(client) == []
