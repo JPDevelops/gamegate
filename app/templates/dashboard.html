@@ -235,7 +235,7 @@ const NAVDEF = [
 ];
 
 const view = document.querySelector("#view");
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
   if (m < 1) return "just now"; if (m < 60) return Math.floor(m)+" min ago";
   if (m < 1440) return Math.floor(m/60)+" h ago";
@@ -384,11 +384,11 @@ const views = {
     const c = cache.connections;
     if (!c) return `<div class="empty">Session expired — reopen your dashboard link.</div>`;
     const conn = (id, name, s) => `
-      <div class="card click" onclick="toggleConn('${id}')">
+      <div class="card click" onclick="toggleConn('${esc(id)}')">
         <div class="row">
           <span class="dot ${s.state === "connected" ? "ok" : s.state === "needs setup" ? "warn" : "off"}"></span>
-          <div><div style="font-weight:600;font-size:13.5px">${name}</div><div class="muted">${esc(s.detail)}</div></div>
-          ${s.action ? `<a class="btn" style="margin-left:auto" href="${s.action.href}" onclick="event.stopPropagation()">${esc(s.action.label)}</a>` : ""}
+          <div><div style="font-weight:600;font-size:13.5px">${esc(name)}</div><div class="muted">${esc(s.detail)}</div></div>
+          ${s.action ? `<a class="btn" style="margin-left:auto" href="${esc(s.action.href)}" onclick="event.stopPropagation()">${esc(s.action.label)}</a>` : ""}
         </div>
         <div class="conn-actions" id="acts-${id}" hidden>
           ${s.can_disconnect ? `<button class="btn danger" onclick="event.stopPropagation();connAction('${id}','disconnect')">Disconnect</button>` : ""}

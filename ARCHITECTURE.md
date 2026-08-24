@@ -2,7 +2,7 @@
 
 ## The one-paragraph version
 
-A lightweight detector on the gaming PC watches running processes and reports state transitions to a FastAPI service. Connectors for Gmail, Slack, and Discord normalize incoming messages into one internal Event model, stored idempotently in SQLite. A routing engine combines the current availability state with each event's priority to decide: deliver now, queue, or suppress. When a gaming session ends, queued events become exactly one post-game digest, delivered to Discord. An optional LLM classifier enriches events but always falls back to deterministic rules.
+A lightweight detector on the gaming PC watches running processes and reports state transitions to a FastAPI service. Connectors for Gmail and Discord (Slack is written but disabled in v0.1) normalize incoming messages into one internal Event model, stored idempotently in SQLite. A routing engine combines the current availability state with each event's priority to decide: deliver now, queue, or suppress — using deterministic rules (VIP senders, urgent keywords). When a gaming session ends, queued events become exactly one post-game digest, delivered to Discord. An optional LLM classifier endpoint demonstrates a graceful-fallback pattern but is not yet wired into the automatic ingest path.
 
 ## Why external services normalize into one Event model
 
@@ -32,7 +32,7 @@ Deliver-now events go to a `notifications` queue that the Discord connector drai
 External services redeliver: Gmail re-polls see the same messages, Slack retries slow acks, webhooks double-fire. Two layers absorb this:
 
 1. **Ingestion**: events are unique on `(source, external_id)`. A replay returns HTTP 200 with the original record (vs. 201 for a create) and stores nothing. Source is part of the key because two services may coincidentally share id formats.
-2. **Delivery**: notifications and digests are acked *after* a successful send, and acking is once-only. A crashed connector re-sends at worst; it never loses items, and the ack guard prevents double-posting.
+2. **Delivery**: notifications and digests are acked *after* a successful send, and acking is once-only. A deliver-now event queues its notification and only then is marked consumed, so a crash between those writes leaves it in the digest queue — at worst it surfaces twice (a live notification and a digest line), never lost. A crashed connector re-sends at worst; the per-item ack guard prevents the same notification or digest posting twice.
 
 The digest itself is idempotent by construction: building it consumes the queued events (marks them `delivered` with the digest id), so a second session end finds an empty queue.
 
@@ -46,7 +46,7 @@ The classifier (`app/services/classifier.py`) sits behind an interface. Its outp
 
 ## Why Nginx sits in front of FastAPI
 
-Uvicorn binds `127.0.0.1:8000` and is never exposed. Nginx owns the network edge: it's the hardened listener, enforces request/body limits, adds forwarded-for headers, and is where TLS terminates if the service ever leaves the LAN. Each component does one job: Nginx speaks "internet," Uvicorn speaks "application." This also means the app can restart (systemd `Restart=on-failure`) without the listener disappearing.
+Uvicorn binds `127.0.0.1:8000` and is never exposed. Nginx owns the network edge: it's the hardened listener, enforces request/body limits, adds forwarded-for headers, and terminates TLS (live on 443 via Let's Encrypt — `nginx/gamegate-tls.conf`). Each component does one job: Nginx speaks "internet," Uvicorn speaks "application." This also means the app can restart (systemd `Restart=on-failure`) without the listener disappearing.
 
 ## Tradeoffs and what changes at scale
 
