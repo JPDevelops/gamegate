@@ -158,6 +158,25 @@ class WindowsNotificationListener:
             self._seen = set(list(self._seen)[-2000:])
 
 
+def access_status() -> str | None:
+    """Current notification-listener permission WITHOUT prompting: 'allowed',
+    'denied', 'unspecified', or None if it can't be read (not Windows / no
+    winsdk). Lets the app re-ask for consent when the OS permission is off."""
+    try:
+        from winsdk.windows.ui.notifications.management import (
+            UserNotificationListener,
+            UserNotificationListenerAccessStatus,
+        )
+
+        status = UserNotificationListener.get_current().get_access_status()
+        return {
+            UserNotificationListenerAccessStatus.ALLOWED: "allowed",
+            UserNotificationListenerAccessStatus.DENIED: "denied",
+        }.get(status, "unspecified")
+    except Exception:  # noqa: BLE001 — not Windows / winsdk missing
+        return None
+
+
 def _run_async(op):
     """Await a winsdk IAsyncOperation from sync code by driving a private loop."""
     import asyncio

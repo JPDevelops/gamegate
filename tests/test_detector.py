@@ -241,3 +241,24 @@ def test_gog_identity_from_info_file(tmp_path):
         jsonlib.dumps({"name": "Cyberpunk 2077"})
     )
     assert gog_game_identity(str(game_dir / "Cyberpunk2077.exe")) == "Cyberpunk 2077"
+
+
+def test_save_config_updates_merges_and_preserves(tmp_path):
+    """The first-run consent flow writes settings back without clobbering the
+    user's existing config (review: app can flip its own setting on)."""
+    import json
+
+    from detector import save_config_updates
+
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"api_url": "https://x", "api_token": "keep-me"}))
+    assert save_config_updates(
+        {"capture_windows_notifications": True, "windows_notif_prompted": True},
+        str(cfg),
+    )
+    data = json.loads(cfg.read_text())
+    assert data["api_token"] == "keep-me"          # existing values preserved
+    assert data["api_url"] == "https://x"
+    assert data["capture_windows_notifications"] is True
+    assert data["windows_notif_prompted"] is True
+    assert list(tmp_path.glob(".config.*.tmp")) == []   # atomic write cleaned up

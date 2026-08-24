@@ -18,11 +18,13 @@ Run:  python detector.py            (uses agent/config.json if present)
 Dependencies: psutil (pip install psutil). Stdlib otherwise.
 """
 import argparse
+import contextlib
 import json
 import logging
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -40,8 +42,10 @@ DEFAULT_CONFIG = {
     "poll_interval_seconds": 5,
     # Opt-in: capture ALL Windows notifications (Discord, Slack, email, ...) via
     # the OS notification listener and feed them into GameGate. Windows-only;
-    # needs a one-time permission grant. Off by default.
+    # needs a one-time permission grant. Off by default; the first-run consent
+    # prompt flips it on if the user says yes.
     "capture_windows_notifications": False,
+    "windows_notif_prompted": False,   # have we shown the first-run consent ask?
 }
 
 # Path fragments that mark a process as "installed by a game launcher".
@@ -95,6 +99,39 @@ def load_config(path: str | None = None) -> dict:
     config["game_processes"] = [p.lower() for p in config["game_processes"]]
     config["ignore_processes"] = [p.lower() for p in config.get("ignore_processes", [])]
     return config
+
+
+def save_config_updates(updates: dict, path: str | None = None) -> bool:
+    """Merge `updates` into config.json on disk and write it back atomically,
+    preserving everything else the user has in the file. Used by the first-run
+    consent flow so the app can flip a setting on itself instead of making the
+    user hand-edit JSON. Returns False (and logs) rather than raising on error —
+    a failed save must never crash startup."""
+    config_path = Path(path) if path else app_dir() / "config.json"
+    log = logging.getLogger("gamegate.detector")
+    try:
+        current = {}
+        if config_path.exists():
+            with contextlib.suppress(ValueError, OSError):
+                loaded = json.loads(config_path.read_text())
+                if isinstance(loaded, dict):
+                    current = loaded
+        current.update(updates)
+        fd, tmp = tempfile.mkstemp(
+            dir=str(config_path.parent), prefix=".config.", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(current, f, indent=2)
+            os.replace(tmp, config_path)  # atomic; never a half-written config
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+        return True
+    except Exception:  # noqa: BLE001 — a bad save must not crash the app
+        log.exception("Could not save config to %s", config_path)
+        return False
 
 
 def psutil_process_lister() -> dict[str, str]:
