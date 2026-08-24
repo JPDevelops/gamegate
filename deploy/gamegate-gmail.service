@@ -13,6 +13,16 @@ WorkingDirectory=/home/ubuntu/Project/gamegate
 EnvironmentFile=/home/ubuntu/Project/gamegate/.env
 Environment=GAMEGATE_ENV=production
 UMask=0077
+# Sandboxing (review M13). This unit doesn't shell out to sudo, so it can drop
+# privileges fully. Writes token.json under the app dir.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/Project/gamegate
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 ExecStart=/home/ubuntu/Project/gamegate/.venv/bin/python -m app.integrations.gmail_run
 Restart=on-failure
 RestartSec=10

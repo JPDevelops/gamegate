@@ -64,6 +64,16 @@ class FullApiClient(ApiClient):
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
                 return json.loads(response.read() or "null")
+        except urllib.error.HTTPError as exc:
+            # Catch HTTPError before URLError (it's a subclass) so a 401 isn't
+            # silently swallowed as "no notifications" — a wrong token would
+            # otherwise make the desktop app show nothing forever (M11).
+            if exc.code == 401:
+                log.error("%s %s: token rejected (401) — check api_token in config.json",
+                          method, path)
+            else:
+                log.warning("%s %s: HTTP %s", method, path, exc.code)
+            return None
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             log.warning("%s %s failed: %s", method, path, exc)
             return None
@@ -112,12 +122,32 @@ class ToastPump:
     (sound, duration) are fetched from the server and applied only when the
     settings version changes (Orion: version-gated)."""
 
+    MAX_SHOW_ATTEMPTS = 3
+
     def __init__(self, api: FullApiClient, show_fn) -> None:
         self.api = api
         self.show = show_fn
         self._settings_version = -1
         self.sound = True
         self.duration_s = 8
+        self._fail_counts: dict[str, int] = {}  # id -> consecutive show failures
+
+    def _show_or_drop(self, item_id: str, title: str, body: str, ack) -> bool:
+        """Show an item and ack on success. If display keeps failing, ack it
+        anyway after MAX_SHOW_ATTEMPTS so one poison item can't block the queue
+        forever (M7) — better to drop one card than to retry it every 10s."""
+        if self.show(title, body, duration_s=self.duration_s, sound=self.sound):
+            if ack(item_id):
+                self._fail_counts.pop(item_id, None)
+                return True
+            return False
+        self._fail_counts[item_id] = self._fail_counts.get(item_id, 0) + 1
+        if self._fail_counts[item_id] >= self.MAX_SHOW_ATTEMPTS:
+            log.warning("Dropping notification %s after %d failed displays",
+                        item_id, self._fail_counts[item_id])
+            ack(item_id)
+            self._fail_counts.pop(item_id, None)
+        return False
 
     def _apply_settings(self) -> None:
         settings = self.api.client_settings()
@@ -131,13 +161,11 @@ class ToastPump:
         delivered = 0
         for notification in self.api.pending_notifications():
             title, body = notification_title_body(notification.get("event", {}))
-            shown = self.show(title, body, duration_s=self.duration_s, sound=self.sound)
-            if shown and self.api.ack_notification(notification["id"]):
+            if self._show_or_drop(notification["id"], title, body, self.api.ack_notification):
                 delivered += 1
         for digest in self.api.pending_digests():
             title, body = digest_title_body(digest)
-            shown = self.show(title, body, duration_s=self.duration_s, sound=self.sound)
-            if shown and self.api.ack_digest(digest["id"]):
+            if self._show_or_drop(digest["id"], title, body, self.api.ack_digest):
                 delivered += 1
         return delivered
 
