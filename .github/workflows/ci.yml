@@ -27,3 +27,19 @@ jobs:
         run: ruff check app tests agent
       - name: Test
         run: pytest -q
+
+  secret-scan:
+    # Turns "no secrets in the repo/history" from an assertion into a check that
+    # runs on every push and PR (review MAJOR: unverifiable security claims).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the scan covers every commit, all branches
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+      - name: Scan full git history for secrets
+        run: gitleaks detect --source . --redact --verbose

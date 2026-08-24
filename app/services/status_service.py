@@ -109,10 +109,12 @@ class StatusService:
         # (that was the misattribution bug), and messages queued while
         # 'away'/'focused' outside a game are NOT recapped — they stay in the
         # dashboard Messages tab (delivered stays 0), never folded into a recap.
-        queued = [
-            e for e in self.event_repo.undelivered()
-            if started <= e.received_at <= ended
-        ] if build else []
+        # The window is filtered in SQL (not in Python after undelivered()) so the
+        # 1000-row cap bounds the in-window messages, not a growing prefix of
+        # never-consumed out-of-window ones (review MAJOR: LIMIT-before-filter).
+        queued = self.event_repo.undelivered_in_window(
+            started.isoformat(), ended.isoformat()
+        ) if build else []
         digest = build_digest(session, queued) if build else None
         digest_id = uuid4().hex
         with conn:  # one unit of work: close + digest + consume

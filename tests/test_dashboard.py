@@ -34,6 +34,11 @@ def test_key_exchanges_for_cookie_then_serves_dashboard(secured):
     page = secured.get("/app")
     assert page.status_code == 200
     assert "GAMEGATE" in page.text
+    # The sidebar version is injected from the package version, not hardcoded,
+    # so it can't drift from pyproject again (old bug: static "v0.1" on 0.2.0).
+    from app import __version__
+    assert f"v{__version__}" in page.text
+    assert "%%GAMEGATE_VERSION%%" not in page.text  # placeholder was filled
 
 
 def test_logout_clears_cookie_and_relocks(secured):

@@ -9,7 +9,7 @@ cd /home/ubuntu/Project/gamegate && source .venv/bin/activate   # match the syst
 cp .env.example .env   # set GAMEGATE_API_TOKEN at minimum
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 # verify (second terminal):
-curl http://127.0.0.1:8000/health     # → {"status":"ok","version":"0.1.0"}
+curl http://127.0.0.1:8000/health     # → {"status":"ok","version":"0.2.0"}
 ```
 
 ## Layer 2 — systemd service

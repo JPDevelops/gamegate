@@ -50,34 +50,48 @@ def test_gaming_session_opened_and_closed(client):
     assert conn.execute("SELECT COUNT(*) c FROM sessions").fetchone()["c"] == 1
 
 
+def _digest_count(db) -> int:
+    return db.connection().execute("SELECT COUNT(*) c FROM digests").fetchone()["c"]
+
+
 def test_only_one_session_open_and_one_close_wins(client):
-    """Race fix: a second concurrent open is a no-op, and only the first close
-    returns the session (so only one digest is ever built)."""
+    """Through the REAL production path (StatusService): a repeated 'gaming' for
+    the same app opens no second session, and one 'available' closes it exactly
+    once, producing exactly one digest."""
     from app import db as db_module
-    from app.services.repositories import SessionRepository
+    from app.deps import get_status_service
+    from app.models.status import StatusUpdate
 
-    repo = SessionRepository(db_module.get_database())
-    s1 = repo.open("Game", None)
-    s2 = repo.open("Game", None)          # second open must be refused
-    assert s1 is not None and s2 is None
+    db = db_module.get_database()
+    svc = get_status_service()
+    svc.set(StatusUpdate(state="gaming", application="Game"))
+    svc.set(StatusUpdate(state="gaming", application="Game"))  # same app → no-op
+    assert _open_session_count(db) == 1
 
-    first = repo.close_current()
-    second = repo.close_current()          # second close must lose the race
-    assert first is not None and second is None
+    _, closed = svc.set(StatusUpdate(state="available"))
+    assert closed is not None
+    assert _open_session_count(db) == 0
+    assert _digest_count(db) == 1
 
 
 def test_concurrent_closes_only_one_wins(client):
-    """Real race (not sequential): N threads close the SAME open session at
-    once. The rowcount-guarded UPDATE must let exactly ONE win, so only one
-    digest is ever built. On the pre-fix code (UPDATE ... WHERE id=?, no guard)
-    every racer's UPDATE succeeds and this fails."""
+    """Real race on the PRODUCTION path: N threads each drive
+    StatusService.set(available) against the SAME open session at once — exactly
+    what two overlapping '/status available' requests do. The product invariant
+    is that exactly one session closes and exactly one recap is built. That is
+    defended in depth by two independent mechanisms — the rowcount-gated close
+    (`... AND ended_at IS NULL`) and the UNIQUE(session_id) index on digests — so
+    a single dropped guard would not silently produce duplicate recaps. This
+    test asserts the invariant itself on the real code path (the previous version
+    raced SessionRepository.close_current(), which production never calls)."""
     import threading
 
     from app import db as db_module
-    from app.services.repositories import SessionRepository
+    from app.deps import get_status_service
+    from app.models.status import StatusUpdate
 
     db = db_module.get_database()
-    SessionRepository(db).open("Game", None)
+    get_status_service().set(StatusUpdate(state="gaming", application="Game"))
 
     n = 8
     ready = threading.Barrier(n)
@@ -85,11 +99,11 @@ def test_concurrent_closes_only_one_wins(client):
     lock = threading.Lock()
 
     def closer():
-        repo = SessionRepository(db)  # its own thread-local connection
-        ready.wait()                  # line all threads up so they truly race
-        won = repo.close_current()
+        svc = get_status_service()  # fresh repos → thread-local connections
+        ready.wait()                # line all threads up so they truly race
+        _, closed = svc.set(StatusUpdate(state="available"))
         with lock:
-            results.append(won)
+            results.append(closed)
 
     threads = [threading.Thread(target=closer) for _ in range(n)]
     for t in threads:
@@ -99,6 +113,8 @@ def test_concurrent_closes_only_one_wins(client):
 
     winners = [r for r in results if r is not None]
     assert len(winners) == 1, f"expected exactly one close to win, got {len(winners)}"
+    assert _open_session_count(db) == 0
+    assert _digest_count(db) == 1  # the actual product invariant: one recap
 
 
 def _open_session_count(db) -> int:

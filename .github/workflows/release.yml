@@ -34,7 +34,10 @@ jobs:
           $stamp = Get-Date -Format "MMM d HH:mm"
           "{`"build`": `"$hash`", `"built`": `"$stamp`"}" | Out-File -Encoding ascii agent/build_info.json
       - name: Build GameGate.exe
-        run: pyinstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py
+        # --add-data bundles the build stamp INTO the single-file exe (it unpacks
+        # under _MEIPASS at runtime), so a downloaded release reports its real
+        # build instead of "unstamped build" (#13). ';.' is the Windows separator.
+        run: pyinstaller --onefile --noconsole --name GameGate --icon gamegate.ico --add-data "build_info.json;." tray_app.py
         working-directory: agent
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -342,6 +342,12 @@ def build_info() -> str:
         candidates = [app_dir() / "build_info.json"]
         if getattr(sys, "frozen", False):
             candidates.append(Path(sys.executable).parent / "build_info.json")
+            # PyInstaller --add-data unpacks bundled files under _MEIPASS at
+            # runtime; the release bundles build_info.json there so a downloaded
+            # single-file exe still reports its real build, not "unstamped" (#13).
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                candidates.append(Path(meipass) / "build_info.json")
         for path in candidates:
             if path.exists():
                 # utf-8-sig: PowerShell's Out-File -Encoding utf8 writes a BOM

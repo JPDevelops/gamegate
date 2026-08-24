@@ -38,7 +38,7 @@ The digest is built atomically — the digest INSERT and the event mark-consumed
 
 ## Where persistence happens
 
-SQLite, accessed exclusively through `app/services/repositories.py` — routes and services never contain SQL. Five things persist: events (with routing outcome), current status, gaming sessions, digests, and pending notifications. Tests prove restart survival by re-opening the same database file. Tradeoff, documented deliberately: SQLite is single-host with modest write concurrency — correct for a personal service; the repository layer is the seam where PostgreSQL would slot in at scale.
+SQLite. Seven things persist: events (with routing outcome), current status, gaming sessions, digests, settings, the art-URL cache, and pending notifications. Most data access goes through `app/services/repositories.py`; the deliberate exceptions are the transactional unit-of-work in `StatusService._close_session()` (close + recap + consume must commit together) and two small maintenance routes (`/art`'s cache read, `/data/clear`'s bulk delete) that own their SQL. Tests prove restart survival by re-opening the same database file. Tradeoff, documented deliberately: SQLite is single-host with modest write concurrency — correct for a personal service. The repository layer is where a PostgreSQL adapter would slot in, though the current implementation leans on SQLite specifics (partial indexes, `INSERT OR REPLACE`, thread-local connections), so a port is real work, not a drop-in swap.
 
 ## Why the LLM is optional and untrusted
 
