@@ -103,7 +103,16 @@ class StatusService:
         build = self.event_repo is not None and self.digest_repo is not None
         # Read the queued events and format the recap BEFORE the transaction
         # (pure work, no writes); the transaction re-marks these exact ids.
-        queued = self.event_repo.undelivered() if build else []
+        # B1 (owner decision C): a game's recap contains ONLY the messages that
+        # ARRIVED during that game — received_at within [session start, end].
+        # A stale email received before you started playing is therefore excluded
+        # (that was the misattribution bug), and messages queued while
+        # 'away'/'focused' outside a game are NOT recapped — they stay in the
+        # dashboard Messages tab (delivered stays 0), never folded into a recap.
+        queued = [
+            e for e in self.event_repo.undelivered()
+            if started <= e.received_at <= ended
+        ] if build else []
         digest = build_digest(session, queued) if build else None
         digest_id = uuid4().hex
         with conn:  # one unit of work: close + digest + consume
