@@ -153,3 +153,63 @@ the whole repo + site with no prior context. Both returned **0 blockers**.
 | **Unpinned dependencies / no lockfile** (M26) | Adds a lockfile + install-from-lock; low risk but changes the CI pipeline; kept as its own PR. | A dedicated CI PR. |
 | **CSP `unsafe-inline`** (M24) | Moving ~20 inline handlers to `addEventListener` is a sizable, self-contained template change. | A dashboard-hardening PR. |
 | **Process-name detection determinism / hysteresis** | Rank duplicate-named processes deterministically and add switch hysteresis; desktop-only, needs care to avoid detection regressions. | A desktop change + manual test. |
+
+## Review round 9 (two more independent no-context reviewers) — 2026-08-24
+
+OpenAI gpt-5.6-sol + a fresh Claude reviewer. Both found **0 backend blockers**;
+the Claude reviewer's only MAJOR was the already-known/deferred Tkinter threading.
+
+**Fixed this round:**
+- **Timestamp UTC normalization** (both reviewers): `Event.received_at` and
+  `StatusUpdate.started_at` relabeled naive datetimes to UTC but kept aware
+  non-UTC offsets verbatim, so the recap's ISO-string window query could
+  misorder a `-07:00` timestamp and drop it from a recap. Now `astimezone(UTC)`
+  at the model boundary; offset-crossing regression test fails on the old code.
+- **Discord resend storm**: the Discord `DeliveryPump` re-posted every cycle when
+  a send succeeded but the ack failed. Added a per-process "already sent" set
+  (the guard the desktop pump already had) + a test; corrected ARCHITECTURE to
+  state delivery is honestly at-least-once.
+- **Discord ingestion scope**: added an opt-in `GAMEGATE_DISCORD_INGEST_CHANNELS`
+  allowlist so the bot needn't ingest every readable channel (unset = prior
+  behavior, so no live change until the owner opts in).
+- **Gmail 200-cap** could fetch up to 250 (150 + a 100 page): request only the
+  remaining room and slice.
+- **OAuth token file** now written atomically (temp + fsync + `os.replace`),
+  matching the `.env` writer.
+- **Auth throttle** no longer counts a keyless `/app` login-page view, so the
+  owner can't lock their own IP by refreshing a bookmarked dashboard (a real
+  `?key=` guess still counts). Test.
+- **Robustness**: `detector.load_config` falls back to defaults on malformed
+  JSON instead of a raw startup traceback (test); the tray pump guards missing
+  `id`/`state` keys instead of aborting the whole cycle.
+- **Doc/claim accuracy**: "queued waits for the digest" → the two real fates
+  (recap if in-session, else Messages tab); "SQL lives only in repositories" /
+  "Postgres is a drop-in" toned down to the truth across ENGINEERING_NOTES,
+  ARCHITECTURE, and the module docstring; dashboard connector status described as
+  configured-state (not live health); the honest caveat that the master token
+  travels once in the opening `?key=` URL; "Pydantic on every body" → "typed
+  models or explicit validation"; version labels v0.1 → v0.2.
+- **Quality**: rewrote a vacuous XFF test to actually exercise last-hop
+  selection from a trusted peer; sha256-verify the gitleaks CI download; removed
+  duplicate nginx server-level headers; stripped internal agent codenames
+  (Vega/Orion/Nebula) from code comments.
+
+**Raised with the owner (a product call, not a code defect):**
+- **"Notification gate" framing** (OpenAI called it a BLOCKER; the Claude
+  reviewer did not consider it one). GameGate holds/prioritizes messages on *its
+  own* surface and gives a recap; it does not reach into Gmail/Discord to
+  suppress *their* native notifications. The honest positioning is "mute your
+  native alerts; GameGate becomes your one game-aware surface." Whether/how to
+  reword the pitch is the owner's decision — asked.
+
+**Still deferred (need the owner, Windows, or a dedicated PR):**
+| Item | Why | Needs |
+|---|---|---|
+| Dashboard-DND vs detector state machine | Design change + UX decision | Owner decision + Windows test |
+| Tkinter single-UI-thread refactor | Windows-only, not CI-testable | Windows pass |
+| Signed/hash-verified release updater | Source updater is a dev convenience today | Release-signing work |
+| Dependency lockfile + SHA-pinned actions | Changes the CI pipeline | Dedicated CI PR (gitleaks download already checksum-pinned) |
+| CSP `unsafe-inline` removal | ~20 inline handlers → addEventListener | Dashboard PR |
+| Connector heartbeats (live health) | New persisted state + UI | Feature PR (limitation now documented) |
+| One-time dashboard login ticket | Removes the token from the `?key=` URL | Auth change (caveat documented) |
+| Poison-item server-side dead-letter | 200 given-up items could block newer pending | Server + desktop change |
