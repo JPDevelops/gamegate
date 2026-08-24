@@ -44,3 +44,23 @@ Everything today assumes one person, one server, one token. "Universal"
 a public service costs — here's the roadmap, the tenancy model, the
 compliance path, and the cost drivers." A working v0.1 plus this plan beats a
 half-built SaaS every time.
+
+## Cost to go universal (2026 estimate)
+
+**Tier 1 — public beta (~<$20/month):** small cloud VM for the shared server
+($6-12/mo), domain (~$12/yr), Let's Encrypt TLS (free), GitHub Pages (free).
+Viable while under Google's 100-test-user cap with the "unverified app"
+warning shown.
+
+**Tier 2 — real public product (~$1-5K/year):**
+- **Google OAuth verification (CASA security assessment): ~$500-4,000/yr** —
+  the dominant cost; required for Gmail restricted scope beyond 100 users
+  without the warning.
+- Code-signing certificate: ~$100-400/yr (removes the Windows unknown-
+  publisher warning on the exe).
+- Hosting at scale: ~$20-100/mo early.
+- Email/monitoring/backups: ~$0-30/mo on free tiers.
+
+Bottom line: pocket money to pilot with real people; a low-four-figure annual
+commitment (Google verification dominated) to go fully public. This is a
+business decision, not an engineering one.
