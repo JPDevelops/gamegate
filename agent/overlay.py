@@ -355,14 +355,16 @@ def _show_consent_prompt(title: str, message: str, yes_label: str, no_label: str
 
         result = {"yes": False}
         root = tk.Tk()
-        root.title("GameGate")
+        # Frameless like the overlay/update cards — no white OS title bar or
+        # default Tk icon clashing with the dark theme (owner: "white bar").
+        root.overrideredirect(True)
         root.attributes("-topmost", True)
         scale = max(1.0, root.winfo_fpixels("1i") / 96.0)
 
         def px(value: float) -> int:
             return int(value * scale)
 
-        width, height = px(400), px(190)
+        width, height = px(420), px(250)
         screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
         root.geometry(
             f"{width}x{height}+{(screen_w - width) // 2}+{(screen_h - height) // 3}"
@@ -394,6 +396,7 @@ def _show_consent_prompt(title: str, message: str, yes_label: str, no_label: str
                   padx=px(16), pady=px(6), cursor="hand2").pack(side="right", padx=(0, px(8)))
 
         root.after(120_000, root.destroy)  # auto-decline after two minutes
+        root.after(50, root.focus_force)   # frameless window still grabs focus
         root.mainloop()
         return result["yes"]
     except Exception:

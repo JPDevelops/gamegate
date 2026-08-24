@@ -651,8 +651,9 @@ def run_tray() -> None:
                 "Catch all your notifications?",
                 "Let GameGate capture your Windows notifications — Discord, Slack, "
                 "email, anything — so it can hold the noise while you game and hand "
-                "you one clean recap after. Windows will ask you to allow this. "
-                "You can change it anytime in config.json.",
+                "you one clean recap after. Windows will ask you to allow this.\n\n"
+                "To turn it off later, open Windows Settings > Privacy & security > "
+                "Notifications and remove GameGate's access.",
                 yes_label="Yes, catch them", no_label="Not now",
             )
             config["capture_windows_notifications"] = want
