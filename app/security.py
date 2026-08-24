@@ -5,6 +5,7 @@ detector and connectors send X-GameGate-Token; mutating endpoints reject
 requests without it. If GAMEGATE_API_TOKEN is unset (local development),
 auth is disabled — the deployment docs call this out.
 """
+import secrets
 from typing import Annotated
 
 from fastapi import Cookie, Header, HTTPException
@@ -23,5 +24,6 @@ def require_api_token(
     expected = get_settings().api_token
     if expected is None:
         return
-    if x_gamegate_token != expected and gamegate_token != expected:
+    supplied = x_gamegate_token or gamegate_token or ""
+    if not secrets.compare_digest(supplied, expected):  # constant-time
         raise HTTPException(status_code=401, detail="Missing or invalid API token")

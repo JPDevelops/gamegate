@@ -68,9 +68,12 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         return time.monotonic()
 
     def _client(self, request: Request) -> str:
+        # Trust only the LAST X-Forwarded-For hop — the one our own nginx
+        # appends. The client-supplied left entries are attacker-controlled
+        # (spoofing them bypassed the limiter and could frame other IPs).
         fwd = request.headers.get("x-forwarded-for", "")
         if fwd:
-            return fwd.split(",")[0].strip()
+            return fwd.split(",")[-1].strip()
         return request.client.host if request.client else "unknown"
 
     async def dispatch(self, request: Request, call_next):
