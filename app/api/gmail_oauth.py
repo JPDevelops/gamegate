@@ -25,6 +25,7 @@ from fastapi import APIRouter, Cookie, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
+from app.security import constant_time_equals, verify_session_cookie
 
 log = logging.getLogger("gamegate.gmail.oauth")
 
@@ -120,9 +121,14 @@ def connect_gmail(
     key: str = "", gamegate_token: str | None = Cookie(default=None)
 ) -> RedirectResponse:
     expected = get_settings().api_token
-    def _eq(a, b):
-        return secrets.compare_digest((a or '').encode('utf-8', 'ignore'), (b or '').encode())
-    if expected and not _eq(key, expected) and not _eq(gamegate_token, expected):
+    # The dashboard cookie is a SIGNED SESSION TOKEN, not the master token, so
+    # verify it as such — comparing the cookie to the raw token always failed
+    # after the session-cookie change and made this button dead (M1).
+    authed = expected and (
+        constant_time_equals(key, expected)
+        or verify_session_cookie(gamegate_token, expected)
+    )
+    if expected and not authed:
         raise HTTPException(status_code=401, detail="key query parameter required")
     client_id, _secret, redirect_uri = _oauth_config()
     params = urlencode(

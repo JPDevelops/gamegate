@@ -14,7 +14,7 @@ copy config.example.json config.json    # set api_url + api_token (games auto-de
 python tray_app.py
 ```
 
-A colored dot appears in the tray: 🟢 available · 🟣 gaming · 🔴 do-not-disturb.
+A colored dot appears in the tray: ⚪ available (neutral gray) · 🟢 gaming (green — the gate is up) · 🔴 do-not-disturb / focused (red).
 Right-click → **Open GameGate** (the desktop window: Inbox / Connections / Settings) / Status / Last digest / Do Not Disturb / Quit.
 
 The window uses Windows' built-in Edge WebView2 engine (preinstalled on Windows 11). It keeps the NATIVE window frame — so Snap, Win+arrow, and maximize all work — with the title bar painted in app colors via DWM.

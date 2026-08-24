@@ -106,3 +106,23 @@ def test_connect_requires_key_when_api_token_set(oauth_env, tmp_path, monkeypatc
         )
         assert ok.status_code == 307
     get_settings.cache_clear()
+
+
+def test_connect_gmail_accepts_dashboard_session_cookie(oauth_env, tmp_path, monkeypatch):
+    """A logged-in browser (signed session cookie, NOT the raw token) must be
+    able to click 'Connect Gmail' — regression guard for M1."""
+    from fastapi.testclient import TestClient
+
+    from app import db as db_module
+    from app.config import get_settings
+    from app.main import app
+    from app.security import issue_session_cookie
+
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "sekret")
+    get_settings.cache_clear()
+    db_module.init_database(str(tmp_path / "t.db"))
+    with TestClient(app) as c:
+        c.cookies.set("gamegate_token", issue_session_cookie("sekret"))
+        r = c.get("/connect/gmail", follow_redirects=False)
+        assert r.status_code == 307  # was 401 before the fix
+    get_settings.cache_clear()

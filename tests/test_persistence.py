@@ -64,3 +64,38 @@ def test_only_one_session_open_and_one_close_wins(client):
     first = repo.close_current()
     second = repo.close_current()          # second close must lose the race
     assert first is not None and second is None
+
+
+def test_concurrent_closes_only_one_wins(client):
+    """Real race (not sequential): N threads close the SAME open session at
+    once. The rowcount-guarded UPDATE must let exactly ONE win, so only one
+    digest is ever built. On the pre-fix code (UPDATE ... WHERE id=?, no guard)
+    every racer's UPDATE succeeds and this fails."""
+    import threading
+
+    from app import db as db_module
+    from app.services.repositories import SessionRepository
+
+    db = db_module.get_database()
+    SessionRepository(db).open("Game", None)
+
+    n = 8
+    ready = threading.Barrier(n)
+    results: list = []
+    lock = threading.Lock()
+
+    def closer():
+        repo = SessionRepository(db)  # its own thread-local connection
+        ready.wait()                  # line all threads up so they truly race
+        won = repo.close_current()
+        with lock:
+            results.append(won)
+
+    threads = [threading.Thread(target=closer) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    winners = [r for r in results if r is not None]
+    assert len(winners) == 1, f"expected exactly one close to win, got {len(winners)}"

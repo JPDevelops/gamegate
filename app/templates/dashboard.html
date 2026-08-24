@@ -542,7 +542,11 @@ window.addEventListener("hashchange", route);
 (async () => { await refresh(); route(); })();
 setInterval(async () => {
   await refresh();
-  if (!location.hash.startsWith("#/recap/")) route();
+  // Don't rebuild the view (which wipes it via innerHTML) while the user is
+  // typing in it — that ate in-progress VIP/keyword input every 15s (M8).
+  const editing = document.activeElement &&
+    document.activeElement.closest && document.activeElement.closest("#view");
+  if (!location.hash.startsWith("#/recap/") && !editing) route();
 }, 15000);
 </script>
 </body>

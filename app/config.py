@@ -20,10 +20,12 @@ class Settings:
     env: str = "development"
     db_path: str = "gamegate.db"
     api_token: str | None = None
-    urgent_breaks_through_gaming: bool = True
     # True only when GAMEGATE_ENV was explicitly set to "development" — used to
     # decide whether an unset token may run open (dev) or must fail closed.
     explicit_dev: bool = False
+    # NOTE: urgent break-through is a per-user DB setting (urgent_breakthrough,
+    # editable in the dashboard), not an env var — see SettingsService. The old
+    # GAMEGATE_URGENT_BREAKTHROUGH field was removed because nothing read it.
 
 
 @lru_cache
@@ -33,7 +35,4 @@ def get_settings() -> Settings:
         env=os.environ.get("GAMEGATE_ENV", "development"),
         db_path=os.environ.get("GAMEGATE_DB_PATH", "gamegate.db"),
         api_token=os.environ.get("GAMEGATE_API_TOKEN") or None,
-        urgent_breaks_through_gaming=(
-            os.environ.get("GAMEGATE_URGENT_BREAKTHROUGH", "true").lower() != "false"
-        ),
     )

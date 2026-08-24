@@ -31,6 +31,30 @@ def test_auth_rate_limit_blocks_after_repeated_failures(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_xff_only_trusted_from_local_proxy():
+    """X-Forwarded-For is honored only when the peer is our loopback proxy;
+    a direct caller cannot mint identities or frame a victim via XFF (M3)."""
+    from types import SimpleNamespace
+
+    from app.middleware import AuthRateLimitMiddleware
+
+    mw = AuthRateLimitMiddleware.__new__(AuthRateLimitMiddleware)
+
+    def req(peer, xff):
+        return SimpleNamespace(
+            headers={"x-forwarded-for": xff} if xff else {},
+            client=SimpleNamespace(host=peer),
+        )
+
+    # From nginx (127.0.0.1): trust the forwarded client.
+    assert mw._client(req("127.0.0.1", "203.0.113.7")) == "203.0.113.7"
+    # Direct caller spoofing XFF: ignored, keyed by the real peer instead —
+    # so rotating a single-entry XFF can't mint fresh identities...
+    assert mw._client(req("203.0.113.9", "1.1.1.1")) == "203.0.113.9"
+    # ...and can't frame a victim's IP either.
+    assert mw._client(req("203.0.113.9", "9.9.9.9")) == "203.0.113.9"
+
+
 def test_rate_limited_429_still_carries_security_headers(tmp_path, monkeypatch):
     """The header middleware must wrap the rate limiter, so even a throttled
     429 ships CSP + nosniff instead of a bare body (M11)."""

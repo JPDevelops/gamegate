@@ -23,7 +23,7 @@ One current status row (state + application + started_at) and an append-only `se
 | gaming | deliver* | queue | queue | suppress |
 | away | queue | queue | queue | suppress |
 
-\* configurable break-through policy (`GAMEGATE_URGENT_BREAKTHROUGH`).
+\* configurable break-through policy — a per-user setting (`urgent_breakthrough`) stored in the DB and edited in the dashboard, passed into `decide()` at ingest time.
 
 Deliver-now events go to a `notifications` queue that the Discord connector drains (send → then ack). Queued events wait for the digest. Suppressed events are stored (audit trail) but consumed immediately.
 
