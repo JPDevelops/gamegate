@@ -43,6 +43,35 @@ def test_application_control_chars_stripped(client):
     assert len(app) <= 128
 
 
+def test_recap_only_includes_messages_received_during_the_game(client):
+    """B1 (owner decision C): the game recap contains ONLY messages that arrived
+    during that game. A message received before you started playing stays in the
+    Messages tab, never folded into the recap."""
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    from tests.test_events import make_event
+
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=10)
+    # received BEFORE the session (a stale email while away):
+    client.post("/events", json=make_event(
+        external_id="before-1", title="STALE-BEFORE", priority="informational",
+        requires_action=False, received_at=(now - timedelta(hours=2)).isoformat()))
+    client.post("/status", json={
+        "state": "gaming", "application": "g.exe", "started_at": start.isoformat()})
+    # received DURING the session:
+    client.post("/events", json=make_event(
+        external_id="during-1", title="AROSE-DURING", priority="informational",
+        requires_action=False, received_at=(now - timedelta(minutes=3)).isoformat()))
+    client.post("/status", json={"state": "available"})  # build the recap
+
+    recap = client.get("/digest/latest").json()
+    assert recap["total_events"] == 1                 # only the in-window message
+    blob = json.dumps(recap["items"])
+    assert "AROSE-DURING" in blob and "STALE-BEFORE" not in blob
+
+
 def test_switching_games_mid_session_makes_a_separate_recap(client):
     """Quit one game and start another without going available: each game gets
     its own session and digest, not one merged recap (M7)."""

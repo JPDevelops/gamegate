@@ -63,8 +63,14 @@ hardware and fixed. Full detail in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 - **The card parade.** First Gmail connect ingested 31 old unread emails and
   every one popped an overlay. Fix: a *freshness* rule — an event received long
-  before ingestion is history, not an interruption, so it queues for the digest
-  regardless of priority (`ingest_service.py`).
+  before ingestion is history, not an interruption, so it is queued silently
+  instead of shown, regardless of priority (`ingest_service.py`).
+- **Recap misattribution.** The post-game recap used to sweep in *every*
+  undelivered message, so a stale email that arrived hours before you started
+  playing showed up as "arrived while you played." Fix: a recap now contains
+  only messages whose `received_at` falls inside that game's session window
+  (`status_service.py`). Messages held while you were away or focused — but not
+  in a game — never get folded into a recap; they stay in the Messages tab.
 - **Wallpaper Engine looked like a game.** `wallpaper64.exe` tripped the process
   detector as GAMING. Fix: an exclusion list + a regression test using the real
   process name (`agent/detector.py`, `tests/test_detector.py`).
