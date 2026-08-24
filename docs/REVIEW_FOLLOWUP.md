@@ -5,8 +5,8 @@ what was fixed and what is deliberately deferred, with reasons.
 
 ## Fixed (across review batches 1–4)
 
-**Blockers:** `.env` load + fail-closed startup guard; deleted the interview
-study guide for honest engineering notes; classifier described accurately;
+**Blockers:** `.env` load + fail-closed startup guard; replaced the old study
+guide with honest engineering notes; classifier described accurately;
 website/doc claims reconciled with the code.
 
 **Security:** signed session cookie (no longer the raw token) + logout; security
@@ -34,8 +34,7 @@ made consistent; hermetic test env.
 | **#27 / #45** scoped tokens / per-service env | Single-user, single-trust-level today; no boundary to enforce yet. | First multi-user or multi-host deployment. |
 
 Assorted nitpicks (trailing newlines, a bound-port mutex, keyword word-boundaries,
-etc.) are tracked in the review report at `reviews/dad-simulation-2026-08-24.md`
-and folded into the batches above where cheap.
+etc.) were folded into the batches above where cheap.
 
 ## Independent review #2 (2026-08-24) — status
 

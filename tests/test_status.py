@@ -43,6 +43,21 @@ def test_application_control_chars_stripped(client):
     assert len(app) <= 128
 
 
+def test_started_at_far_in_the_future_is_clamped(client):
+    """MAJOR #8: a bad detector clock can't open a session that starts in the
+    far future (which would swallow events with an absurd window). It's clamped
+    to ~now, and a naive timestamp is coerced to aware UTC."""
+    from datetime import UTC, datetime, timedelta
+
+    future = (datetime.now(UTC) + timedelta(days=3650)).replace(tzinfo=None)  # naive + far
+    client.post("/status", json={
+        "state": "gaming", "application": "g.exe", "started_at": future.isoformat()})
+    got = client.get("/status").json()["started_at"]
+    parsed = datetime.fromisoformat(got)
+    assert parsed.tzinfo is not None                              # coerced to aware
+    assert parsed <= datetime.now(UTC) + timedelta(minutes=6)     # clamped to ~now
+
+
 def test_recap_only_includes_messages_received_during_the_game(client):
     """B1 (owner decision C): the game recap contains ONLY messages that arrived
     during that game. A message received before you started playing stays in the

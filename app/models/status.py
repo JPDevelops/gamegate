@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from pydantic import BaseModel, field_validator
@@ -27,6 +27,21 @@ class StatusUpdate(BaseModel):
             return None
         cleaned = "".join(ch for ch in v if ch == " " or ch.isprintable())
         return cleaned[:128]
+
+    @field_validator("started_at")
+    @classmethod
+    def _normalize_started_at(cls, v: datetime | None) -> datetime | None:
+        """The detector supplies started_at, so normalize it at the boundary the
+        same way received_at is (review MAJOR #8). Naive → UTC so the recap
+        session-window comparison never mixes aware and naive datetimes, and a
+        start clamped to 'now' if it's implausibly in the future (a bad client
+        clock must not open a session that ends before it began or that swallows
+        events with a wildly wide window)."""
+        if v is None:
+            return None
+        v = v.replace(tzinfo=UTC) if v.tzinfo is None else v
+        now = datetime.now(UTC)
+        return now if v > now + timedelta(minutes=5) else v
 
 
 class StatusResponse(BaseModel):

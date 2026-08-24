@@ -70,7 +70,10 @@ def dashboard(
         return response
     if expected and not logged_in and not key_ok:
         return HTMLResponse(LOGIN_PAGE, status_code=401)
-    return HTMLResponse(TEMPLATE.read_text(encoding="utf-8"))
+    # Fill the version placeholder from the package version so the sidebar can
+    # never drift from pyproject again (the old hardcoded "v0.1" outlived 0.2.0).
+    html = TEMPLATE.read_text(encoding="utf-8").replace("%%GAMEGATE_VERSION%%", __version__)
+    return HTMLResponse(html)
 
 
 @router.post("/logout")

@@ -6,10 +6,10 @@ one server, LAN + one WAN port) and its revisit trigger.
 
 | # | Item | v0.1 decision | Rationale | Revisit when |
 |---|------|---------------|-----------|--------------|
-| #26 | TLS at Nginx | **Done — TLS live on 443** | Let's Encrypt cert via sslip.io; the HTTPS endpoint is what the dashboard and clients use (`nginx/gamegate-tls.conf`). Port 80 is kept for existing plain-HTTP lab clients on the LAN; migrating those off HTTP is the remaining sub-item. | Retire port 80 once all clients use HTTPS. |
+| #26 | TLS at Nginx | **Done — TLS live on 443** | Let's Encrypt cert via sslip.io; the HTTPS endpoint is what the dashboard and clients use (`nginx/gamegate-tls.conf`). Port 80 serves no plain-HTTP API — it only answers ACME challenges and `301`-redirects everything else to HTTPS (`nginx/gamegate.conf`). | Retire the port-80 listener entirely once ACME no longer needs it. |
 | #27 | Scoped per-component tokens | **Accepted risk for lab** | All clients are owned by the same person on the same trust level today; compromise of any device already means owner-level compromise. | First moment two components have different trust levels (e.g. SaaS, shared server, or a connector on third-party infra). |
 | #45 | Per-service env files | **Accepted risk for lab** | All services run as the same user on the same host; splitting env files adds ops friction without a trust boundary to enforce. | When services get separated (containers, multiple hosts, or any untrusted code in one service). |
-| #28 | Transactional session close | **Open engineering debt, scheduled** | Not a security item; data-integrity on crash timing. Invisible in normal use. | Next hardening sprint (before v0.2 ships). |
+| #28 | Transactional session close | **Done in v0.2** | Closing a session, building its recap, and consuming its events now run as one rowcount-gated transaction in `StatusService._close_session()`; a crash rolls the whole unit back and the next status poll reconciles. | Revisit if the persistence layer moves off SQLite. |
 
 Standing controls already in force: the app refuses to start without a token unless
 GAMEGATE_ENV=development is set explicitly (an unset token fails closed, not open);
@@ -53,5 +53,5 @@ no exception.
 | 16 | Restrict file uploads | N/A — no uploads |
 | 17 | Trim API responses | Partial: /events, /status, /health, classify use a typed response_model; the dashboard/settings/connector routes return plain dicts assembled server-side (no model leakage, but not schema-typed) |
 | 18 | Security headers | ✅ SecurityHeadersMiddleware (nosniff, DENY, CSP, Referrer, Permissions) |
-| 19 | Force HTTPS | HSTS sent over HTTPS; TLS live on 443; port 80 kept for local clients (documented) |
+| 19 | Force HTTPS | HSTS sent over HTTPS; TLS live on 443; port 80 is redirect-only (301 → HTTPS) and serves only ACME challenges — no plain-HTTP API |
 | 20 | Scan dependencies | ✅ Dependabot alerts + security fixes + weekly PRs |
