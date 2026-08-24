@@ -37,7 +37,8 @@ def test_update_env_var_does_not_uncomment_or_leave_tmp(tmp_path, monkeypatch):
     assert "CLASSIFIER_ENABLED=true" in text
     assert "CLASSIFIER_ENABLED=false" not in text   # replaced, not duplicated
     assert not (tmp_path / ".env.tmp").exists()     # atomic swap cleaned up
-    assert oct(env.stat().st_mode)[-3:] == "600"    # secrets file is 0600 (M7)
+    if os.name == "posix":  # POSIX file modes only — Windows has no 0600 (M7)
+        assert oct(env.stat().st_mode)[-3:] == "600"  # secrets file is 0600
 
 
 def test_gmail_disconnect_removes_token_and_flag(client, env_file, tmp_path, monkeypatch, no_systemd):
