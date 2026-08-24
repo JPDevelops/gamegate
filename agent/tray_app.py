@@ -280,7 +280,8 @@ def build_info() -> str:
             candidates.append(Path(sys.executable).parent / "build_info.json")
         for path in candidates:
             if path.exists():
-                data = json.loads(path.read_text())
+                # utf-8-sig: PowerShell's Out-File -Encoding utf8 writes a BOM
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
                 return f"{data.get('build', '?')} · {data.get('built', '?')}"
         return "source" if not getattr(sys, "frozen", False) else "unstamped build"
     except Exception:  # noqa: BLE001 — cosmetic
