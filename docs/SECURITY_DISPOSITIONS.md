@@ -46,12 +46,12 @@ no exception.
 | 9 | Secure session cookies | ✅ HttpOnly + SameSite=lax + Secure over HTTPS; cookie is a signed, expiring session token (HMAC of the master secret), never the raw token — a cookie leak is time-boxed and not the master credential; /logout clears it |
 | 10 | Hash passwords | N/A — token auth, no passwords |
 | 11 | Rate limit login | ✅ AuthRateLimitMiddleware throttles repeated 401s per IP |
-| 12 | Bot protection | Only /health is unauthenticated (trivial); no public forms |
+| 12 | Bot protection | Unauthenticated routes are limited to /health, the OAuth callback (state-protected), /logout, and /docs+/openapi (development only); every data/write route requires the token. No public forms |
 | 13 | Parameterize queries | ✅ all SQL uses ? placeholders (only fixed-table-name DELETE excepted) |
 | 14 | Validate all input | ✅ Pydantic on every request body; enums 422 bad values |
 | 15 | Escape user content | ⚠️ Partial. esc() (escapes & < > " ') covers dashboard TEXT sinks; attacker-controlled fields (sender/title) land in text context and are escaped. BUT esc() is HTML-entity escaping and the template also interpolates ids into inline `onclick="…'${esc(id)}'…"` handlers — the wrong escaper for a JS-string sink. Not exploitable today only because those ids are server-generated uuids, not user input. Real fix is tracked (M24: drop CSP `unsafe-inline`, move handlers to addEventListener). Do NOT add a user-controlled value to an inline handler until then. Overlay is tkinter (no HTML sink). |
 | 16 | Restrict file uploads | N/A — no uploads |
-| 17 | Trim API responses | ✅ typed response_model on returns |
+| 17 | Trim API responses | Partial: /events, /status, /health, classify use a typed response_model; the dashboard/settings/connector routes return plain dicts assembled server-side (no model leakage, but not schema-typed) |
 | 18 | Security headers | ✅ SecurityHeadersMiddleware (nosniff, DENY, CSP, Referrer, Permissions) |
 | 19 | Force HTTPS | HSTS sent over HTTPS; TLS live on 443; port 80 kept for local clients (documented) |
 | 20 | Scan dependencies | ✅ Dependabot alerts + security fixes + weekly PRs |
