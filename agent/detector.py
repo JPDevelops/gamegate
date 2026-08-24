@@ -20,6 +20,8 @@ Dependencies: psutil (pip install psutil). Stdlib otherwise.
 import argparse
 import json
 import logging
+import os
+import re
 import sys
 import time
 import urllib.error
@@ -97,8 +99,6 @@ def psutil_process_lister() -> dict[str, str]:
 
 def parse_acf_fields(text: str) -> dict:
     """Minimal Valve ACF parser: top-level "key" "value" pairs we care about."""
-    import re
-
     fields = {}
     for key in ("appid", "name", "installdir"):
         match = re.search(rf'"{key}"\s+"([^"]*)"', text)
@@ -113,7 +113,8 @@ def prettify_exe(name: str) -> str:
     changed = True
     while changed:
         changed = False
-        for suffix in ("client", "launcher", "-win64-shipping", "_win64", "win64", "x64", "shipping"):
+        suffixes = ("client", "launcher", "-win64-shipping", "_win64", "win64", "x64", "shipping")
+        for suffix in suffixes:
             stripped = stem.removesuffix(suffix).rstrip("-_ ")
             if stripped != stem and stripped:
                 stem, changed = stripped, True
@@ -123,13 +124,10 @@ def prettify_exe(name: str) -> str:
 def steam_game_identity(exe_path: str) -> tuple[str, str] | None:
     """(friendly name, steam appid) from the library's appmanifest files.
     exe_path .../steamapps/common/<installdir>/... identifies the manifest."""
-    import re
-    from pathlib import Path as P
-
     match = re.search(r"(.*steamapps)[\\/]common[\\/]([^\\/]+)", exe_path, re.IGNORECASE)
     if not match:
         return None
-    steamapps, installdir = P(match.group(1)), match.group(2).lower()
+    steamapps, installdir = Path(match.group(1)), match.group(2).lower()
     try:
         for manifest in steamapps.glob("appmanifest_*.acf"):
             fields = parse_acf_fields(manifest.read_text(errors="ignore"))
@@ -143,20 +141,16 @@ def steam_game_identity(exe_path: str) -> tuple[str, str] | None:
 def epic_game_identity(exe_path: str, manifests_dir: str | None = None) -> str | None:
     """Real title from Epic's launcher manifests (*.item JSON files):
     match the exe path against each manifest's InstallLocation."""
-    import json as jsonlib
-    import os as _os
-    from pathlib import Path as P
-
-    base = P(
+    base = Path(
         manifests_dir
-        or _os.path.join(
-            _os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+        or os.path.join(
+            os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
             "Epic", "EpicGamesLauncher", "Data", "Manifests",
         )
     )
     try:
         for item in base.glob("*.item"):
-            data = jsonlib.loads(item.read_text(errors="ignore"))
+            data = json.loads(item.read_text(errors="ignore"))
             location = str(data.get("InstallLocation", "")).lower().rstrip("\\/")
             if location and exe_path.lower().startswith(location):
                 return data.get("DisplayName") or None
@@ -167,14 +161,11 @@ def epic_game_identity(exe_path: str, manifests_dir: str | None = None) -> str |
 
 def gog_game_identity(exe_path: str) -> str | None:
     """Real title from GOG's goggame-*.info JSON sitting in the game folder."""
-    import json as jsonlib
-    from pathlib import Path as P
-
-    folder = P(exe_path).parent
+    folder = Path(exe_path).parent
     try:
         for _ in range(3):  # exe may sit a couple of levels deep
             for info in folder.glob("goggame-*.info"):
-                name = jsonlib.loads(info.read_text(errors="ignore")).get("name")
+                name = json.loads(info.read_text(errors="ignore")).get("name")
                 if name:
                     return name
             folder = folder.parent

@@ -34,5 +34,19 @@ packages = ["app"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# A real rule set, not just the default E4/E7/E9/F. Catches line length,
+# import hygiene, bugbears, comprehensions, and modernizations — the classes
+# the adversarial review flagged as "generated, not written" tells.
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM"]
+# UP042 (str, Enum -> StrEnum) is skipped deliberately: our enums are
+# serialized by .value and StrEnum changes str() semantics; not worth the risk.
+ignore = ["UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures carry realistic long Windows path literals and descriptive
+# signatures; line length is enforced on app/ and agent/, not test data.
+"tests/*" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

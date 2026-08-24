@@ -107,7 +107,9 @@ def write_token_file(tokens: dict, client_id: str, client_secret: str) -> str:
 
 
 @router.get("/connect/gmail")
-def connect_gmail(key: str = "", gamegate_token: str | None = Cookie(default=None)) -> RedirectResponse:
+def connect_gmail(
+    key: str = "", gamegate_token: str | None = Cookie(default=None)
+) -> RedirectResponse:
     expected = get_settings().api_token
     def _eq(a, b):
         return secrets.compare_digest((a or '').encode('utf-8', 'ignore'), (b or '').encode())

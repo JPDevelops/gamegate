@@ -24,6 +24,6 @@ jobs:
           pip install -e .
           pip install pytest httpx ruff
       - name: Lint
-        run: ruff check app tests
+        run: ruff check app tests agent
       - name: Test
         run: pytest -q

@@ -318,7 +318,7 @@ def launch_updater() -> bool:
     # Absolute path: on Jules' machine the bare word 'powershell' resolves
     # through a broken app association — the spawned console died instantly.
     powershell = (
-        Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
         / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     )
     launcher = str(powershell) if powershell.exists() else "powershell.exe"

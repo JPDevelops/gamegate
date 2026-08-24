@@ -102,7 +102,10 @@ def format_status_reply(status: dict | None) -> str:
         return "GameGate API is unreachable right now."
     state = status["state"]
     if state == "gaming":
-        return f"🎮 Gaming — {status.get('application') or 'unknown game'}. Non-urgent messages are being held."
+        return (
+            f"🎮 Gaming — {status.get('application') or 'unknown game'}. "
+            "Non-urgent messages are being held."
+        )
     return f"Status: {state}"
 
 

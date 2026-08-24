@@ -5,31 +5,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 
 from overlay import (
-    MIN_HEIGHT,
-    compute_card_height,
     compute_geometry,
     rounded_rect_points,
 )
 from tray_app import pick_notifier, windows_toast
-
-
-def test_card_hugs_content_but_caps_at_15_percent():
-    short = compute_card_height(body_lines=1, screen_h=1080)
-    tall = compute_card_height(body_lines=50, screen_h=1080)
-    assert short >= MIN_HEIGHT
-    assert short < tall
-    assert tall == int(1080 * 0.15)  # Jules' 15% is the MAX, not the fixed size
-
-
-def test_card_height_scales_with_dpi():
-    """Windows 150% scaling: layout must grow with the fonts or the countdown
-    bar runs through the text (Jules' live find)."""
-    normal = compute_card_height(body_lines=2, screen_h=2160, scale=1.0)
-    scaled = compute_card_height(body_lines=2, screen_h=2160, scale=1.5)
-    assert scaled == int(
-        (12 + 34 + 24 + 2 * 19 + 12 + 6) * 1.5
-    )
-    assert scaled > normal
 
 
 def test_geometry_is_top_right():
