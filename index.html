@@ -29,11 +29,17 @@
   .nav .spacer { margin-left:auto; }
   .nav a.link { color:var(--muted); text-decoration:none; font-size:14px; font-weight:500; margin:0 10px; }
   .nav a.link:hover { color:var(--text); }
-  .btn { display:inline-flex; align-items:center; gap:8px; background:var(--green); color:#06130b;
-         padding:11px 20px; border-radius:9px; font-weight:700; font-size:14px; text-decoration:none;
-         border:none; cursor:pointer; transition:transform .12s, filter .12s; }
-  .btn:hover { transform:translateY(-1px); filter:brightness(1.08); }
-  .btn.ghost { background:transparent; border:1px solid var(--line); color:var(--text); }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:9px;
+         background:linear-gradient(180deg,var(--green2),var(--green)); color:#06130b;
+         padding:13px 24px; border-radius:11px; font-weight:700; font-size:15px; text-decoration:none;
+         border:none; cursor:pointer; white-space:nowrap;
+         box-shadow:0 6px 20px #2ee06f33, inset 0 1px 0 #ffffff40;
+         transition:transform .12s, box-shadow .12s, filter .12s; }
+  .btn:hover { transform:translateY(-2px); box-shadow:0 10px 30px #2ee06f55, inset 0 1px 0 #ffffff40; }
+  .btn.big { padding:15px 30px; font-size:16px; }
+  .btn.ghost { background:none; border:1px solid var(--line); color:var(--text); box-shadow:none; }
+  .btn.ghost:hover { border-color:#2ee06f66; box-shadow:none; }
+  .hero-cta .btn, .cta .btn { flex:0 0 auto; }
 
   /* hero */
   .hero { position:relative; padding:96px 0 60px; overflow:hidden; }
@@ -55,30 +61,44 @@
   .note { color:var(--muted); font-size:13px; margin-top:16px; }
 
   /* live demo panel */
-  .demo { position:relative; background:linear-gradient(160deg,#141b17,#0c0f10);
-          border:1px solid var(--line); border-radius:18px; height:320px; overflow:hidden;
+  .demo { position:relative; background:#0b0e0c;
+          border:1px solid var(--line); border-radius:18px; height:340px; overflow:hidden;
           box-shadow:0 30px 60px #0006; }
+  /* original abstract 'gameplay' scene — parallax drifting shapes, no real footage */
+  .scene { position:absolute; inset:0; overflow:hidden; }
+  .scene .sky { position:absolute; inset:0; background:linear-gradient(180deg,#12241c,#0b0e0c 70%); }
+  .scene .sun { position:absolute; top:26%; left:50%; width:120px; height:120px; margin-left:-60px;
+                border-radius:50%; background:radial-gradient(circle,#2ee06f55,transparent 70%); filter:blur(4px); }
+  .scene .ridge { position:absolute; left:-5%; width:110%; height:120px; bottom:0;
+                  background:#0e1512; clip-path:polygon(0 60%,15% 30%,30% 55%,45% 20%,60% 50%,75% 25%,90% 55%,100% 35%,100% 100%,0 100%); }
+  .scene .ridge.back { bottom:40px; opacity:.5; filter:blur(1px);
+                       clip-path:polygon(0 50%,20% 25%,40% 45%,55% 18%,70% 40%,85% 22%,100% 45%,100% 100%,0 100%); }
+  .scene .p { position:absolute; width:3px; height:3px; border-radius:50%; background:#2ee06faa;
+              animation:drift linear infinite; }
+  @keyframes drift { from { transform:translateY(340px); opacity:0; }
+                     10% { opacity:1; } 90% { opacity:1; } to { transform:translateY(-20px); opacity:0; } }
   .demo .scanline { position:absolute; inset:0; background:repeating-linear-gradient(
       0deg, transparent 0 3px, #ffffff05 3px 4px); pointer-events:none; }
-  .demo .hud { position:absolute; bottom:14px; left:16px; color:#ffffff2a; font-size:12px; letter-spacing:.05em; }
-  .demo .status { position:absolute; top:14px; left:16px; display:flex; align-items:center; gap:8px;
-                  font-size:12px; color:var(--muted); }
-  .demo .status .d { width:9px; height:9px; border-radius:50%; background:var(--green);
+  .demo .hud { position:absolute; bottom:12px; left:16px; color:#ffffff35; font-size:11px; letter-spacing:.05em; }
+  .demo .status { position:absolute; bottom:12px; right:16px; display:flex; align-items:center; gap:7px;
+                  font-size:11px; color:var(--dim); background:#0a0c0d99; padding:4px 10px; border-radius:99px; }
+  .demo .status .d { width:8px; height:8px; border-radius:50%; background:var(--green);
                      box-shadow:0 0 8px var(--green); }
-  .toast { position:absolute; top:16px; right:16px; width:70%; max-width:300px;
+  .toast { position:absolute; top:16px; left:50%; width:86%; max-width:320px;
            background:#141817ee; border:1px solid var(--line); border-radius:11px; display:flex;
-           box-shadow:0 14px 34px #0009; opacity:0; transform:translateX(20px);
+           box-shadow:0 14px 34px #0009; opacity:0;
+           transform:translateX(-50%) translateY(-16px);
            animation:toastIn 6s infinite; }
   .toast .bar { width:5px; border-radius:11px 0 0 11px; background:var(--green); }
   .toast .b { padding:11px 13px; }
   .toast .t { font-size:12px; font-weight:700; color:var(--green2); }
   .toast .m { font-size:12.5px; color:var(--dim); margin-top:2px; }
-  .toast .prog { height:2px; background:var(--green); margin:8px 13px 0; border-radius:2px;
+  .toast .prog { height:3px; background:var(--green); margin:8px 13px 11px; border-radius:2px;
                  animation:prog 6s infinite; }
   @keyframes toastIn {
-    0%,4% { opacity:0; transform:translateX(20px); }
-    8%,60% { opacity:1; transform:translateX(0); }
-    70%,100% { opacity:0; transform:translateX(20px); }
+    0%,4% { opacity:0; transform:translateX(-50%) translateY(-16px); }
+    9%,60% { opacity:1; transform:translateX(-50%) translateY(0); }
+    70%,100% { opacity:0; transform:translateX(-50%) translateY(-16px); }
   }
   @keyframes prog { 8% { width:calc(100% - 26px); } 60% { width:0; } 100% { width:0; } }
 
@@ -164,20 +184,29 @@
     <h1>Game now.<br><span class="g">Catch up after.</span></h1>
     <p class="sub">GameGate detects when you're in a game, silently holds your Gmail, Slack, and Discord, lets true emergencies break through, and hands you one clean recap when you're done.</p>
     <div class="hero-cta">
-      <a class="btn" href="#get">⬇ Download for Windows</a>
-      <a class="btn ghost" href="#how">See how it works</a>
+      <a class="btn big" href="#get">⬇ Download for Windows</a>
+      <a class="btn ghost big" href="#how">See how it works</a>
     </div>
     <p class="note">Free &amp; open source · Self-hosted · Your messages never leave your own server</p>
   </div>
   <div class="demo" aria-hidden="true">
+    <div class="scene">
+      <div class="sky"></div><div class="sun"></div>
+      <div class="ridge back"></div><div class="ridge"></div>
+      <div class="p" style="left:12%;animation-duration:7s"></div>
+      <div class="p" style="left:30%;animation-duration:9s;animation-delay:2s"></div>
+      <div class="p" style="left:52%;animation-duration:6s;animation-delay:1s"></div>
+      <div class="p" style="left:70%;animation-duration:8s;animation-delay:3s"></div>
+      <div class="p" style="left:88%;animation-duration:10s;animation-delay:1.5s"></div>
+    </div>
     <div class="scanline"></div>
-    <div class="status"><span class="d"></span> GAMING · Rust — the gate is holding your messages</div>
     <div class="toast">
       <div class="bar"></div>
       <div class="b"><div class="t">URGENT · GMAIL</div><div class="m">boss@work.com: the server's down, call me</div></div>
       <div class="prog"></div>
     </div>
-    <div class="hud">▲ your game keeps running — nothing steals focus</div>
+    <div class="status"><span class="d"></span> GAMING · Fortnite</div>
+    <div class="hud">your game keeps running — nothing steals focus</div>
   </div>
 </div></div>
 
@@ -218,7 +247,7 @@
   </div>
   <div class="showcase">
     <div class="reveal"><div class="recap">
-      <div class="top"><span class="badge">🎮 Rust</span></div>
+      <div class="top"><span class="badge">🎮 Fortnite</span></div>
       <div class="body">
         <div style="color:var(--muted);font-size:13px">Session complete · 2 hours ago</div>
         <div class="dur">2h 17m</div>
@@ -260,8 +289,8 @@
   <h2>Take your attention back</h2>
   <p class="lead" style="margin:0 auto 26px">Self-hosted and private: your GameGate server runs on any small Linux box, and the Windows app talks only to it.</p>
   <div class="hero-cta" style="justify-content:center">
-    <a class="btn" href="https://github.com/JPDevelops/gamegate/releases/latest">⬇ Download for Windows</a>
-    <a class="btn ghost" href="https://github.com/JPDevelops/gamegate">View source</a>
+    <a class="btn big" href="https://github.com/JPDevelops/gamegate/releases/latest">⬇ Download for Windows</a>
+    <a class="btn ghost big" href="https://github.com/JPDevelops/gamegate">View source</a>
   </div>
   <p class="note">Unsigned build — Windows asks once (More info → Run anyway). Setup guide in the repo.</p>
 </div></section>
