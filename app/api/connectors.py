@@ -5,11 +5,13 @@ parts per connector (systemd units, token files, env flags). Lab-grade by
 design: the API host owns its own services (sudo systemctl is passwordless
 for this user), documented in SECURITY_DISPOSITIONS.
 """
+import json
 import logging
 import os
 import subprocess
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.security import require_api_token
@@ -62,36 +64,77 @@ def _require_systemctl_ok(action: str, unit: str) -> None:
         )
 
 
-def _env_key(line: str) -> str:
-    """The variable name a .env line defines, ignoring a leading comment marker
-    so a commented-out `# KEY=...` is updated in place instead of duplicated."""
-    return line.split("=", 1)[0].lstrip("#").strip()
+def _is_active_assignment(line: str, key: str) -> bool:
+    """True only for an ACTIVE `KEY=...` line — not a commented `# KEY=...`.
+    We must not silently uncomment a deliberately-disabled variable (M12)."""
+    stripped = line.lstrip()
+    return not stripped.startswith("#") and stripped.split("=", 1)[0].strip() == key
+
+
+def _quote_env_value(value: str) -> str:
+    """Single-quote a value that isn't a bare token, so it can't inject extra
+    lines/directives into the EnvironmentFile systemd loads (M12)."""
+    if value and all(c.isalnum() or c in "._-:/" for c in value):
+        return value
+    return "'" + value.replace("'", "'\\''") + "'"
 
 
 def update_env_var(key: str, value: str) -> None:
-    """Persist a config flag into the .env file (and this process' env)."""
+    """Persist a config flag into the .env file (and this process' env),
+    atomically (write tmp + os.replace) so a crash can't truncate the secrets
+    file, and only replacing an active assignment (never uncommenting one)."""
     os.environ[key] = value
     if not ENV_PATH.exists():
         return
     lines = ENV_PATH.read_text().splitlines()
+    new_line = f"{key}={_quote_env_value(value)}"
     replaced = False
     for i, line in enumerate(lines):
-        if _env_key(line) == key:
-            lines[i] = f"{key}={value}"
+        if _is_active_assignment(line, key):
+            lines[i] = new_line
             replaced = True
     if not replaced:
-        lines.append(f"{key}={value}")
-    ENV_PATH.write_text("\n".join(lines) + "\n")
+        lines.append(new_line)
+    tmp = ENV_PATH.with_name(ENV_PATH.name + ".tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    os.replace(tmp, ENV_PATH)  # atomic swap; never a truncated .env
+
+
+def _revoke_google_grant(token_path: Path) -> bool:
+    """Best-effort: tell Google to revoke the OAuth grant so 'disconnect' truly
+    disconnects, instead of only deleting the local token while Google keeps the
+    authorization live (M10). Returns True on a confirmed revoke."""
+    try:
+        data = json.loads(token_path.read_text())
+    except (OSError, ValueError):
+        return False
+    secret = data.get("refresh_token") or data.get("token")
+    if not secret:
+        return False
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(
+                "https://oauth2.googleapis.com/revoke",
+                params={"token": secret},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        if resp.status_code == 200:
+            return True
+        log.warning("Google token revoke returned %s", resp.status_code)
+    except httpx.HTTPError as exc:
+        log.warning("Google token revoke failed: %s", exc)
+    return False
 
 
 @router.post("/connectors/{name}/disconnect")
 def disconnect(name: str) -> dict:
     if name == "gmail":
         token = Path(os.environ.get("GMAIL_TOKEN_PATH", "token.json"))
+        revoked = _revoke_google_grant(token)  # revoke BEFORE deleting the token
         token.unlink(missing_ok=True)
         update_env_var("GMAIL_ENABLED", "false")
         _require_systemctl_ok("stop", SERVICES["gmail"])
-        return {"disconnected": "gmail"}
+        return {"disconnected": "gmail", "grant_revoked": revoked}
     if name == "discord":
         _require_systemctl_ok("stop", SERVICES["discord"])
         return {"disconnected": "discord"}

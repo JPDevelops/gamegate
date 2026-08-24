@@ -21,6 +21,24 @@ def env_file(tmp_path, monkeypatch):
     return env
 
 
+def test_update_env_var_does_not_uncomment_or_leave_tmp(tmp_path, monkeypatch):
+    """M12: a commented-out key must NOT be uncommented, an active key IS
+    replaced, and the atomic write leaves no .env.tmp behind."""
+    env = tmp_path / ".env"
+    env.write_text("# GMAIL_ENABLED=false\nCLASSIFIER_ENABLED=false\n")
+    monkeypatch.setattr(connectors_module, "ENV_PATH", env)
+
+    connectors_module.update_env_var("GMAIL_ENABLED", "true")   # only commented → append
+    connectors_module.update_env_var("CLASSIFIER_ENABLED", "true")  # active → replace in place
+    text = env.read_text()
+
+    assert "# GMAIL_ENABLED=false" in text          # comment left intact
+    assert "GMAIL_ENABLED=true" in text             # active value appended
+    assert "CLASSIFIER_ENABLED=true" in text
+    assert "CLASSIFIER_ENABLED=false" not in text   # replaced, not duplicated
+    assert not (tmp_path / ".env.tmp").exists()     # atomic swap cleaned up
+
+
 def test_gmail_disconnect_removes_token_and_flag(client, env_file, tmp_path, monkeypatch, no_systemd):
     token = tmp_path / "token.json"
     token.write_text("{}")

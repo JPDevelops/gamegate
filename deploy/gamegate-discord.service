@@ -13,6 +13,15 @@ WorkingDirectory=/home/ubuntu/Project/gamegate
 EnvironmentFile=/home/ubuntu/Project/gamegate/.env
 Environment=GAMEGATE_ENV=production
 UMask=0077
+# Sandboxing (review M13). No sudo here, so drop privileges fully.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/Project/gamegate
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 ExecStart=/home/ubuntu/Project/gamegate/.venv/bin/python -m app.integrations.discord_bot
 Restart=on-failure
 RestartSec=5
