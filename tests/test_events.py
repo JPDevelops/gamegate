@@ -40,6 +40,25 @@ def test_unread_bulk_ids_are_capped(client):
     assert client.post("/events/unread", json={"ids": ["x"] * 10}).status_code == 200
 
 
+def test_oversized_event_fields_are_rejected(client):
+    """M11: string fields are length-bounded at the model, not just truncated by
+    trusted connectors, so a direct caller can't store an unbounded blob."""
+    assert client.post("/events", json=make_event(external_id="x" * 600)).status_code == 422
+    assert client.post("/events", json=make_event(title="t" * 2000)).status_code == 422
+    assert client.post("/events", json=make_event(content="c" * 9000)).status_code == 422
+
+
+def test_future_dated_event_is_clamped_to_now(client):
+    """M12: a far-future received_at is clamped to now so it can't sit
+    permanently 'fresh' and defeat the freshness gate."""
+    from datetime import UTC, datetime
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    client.post("/events", json=make_event(
+        external_id="future-1", received_at="2035-01-01T00:00:00Z"))
+    stored = next(e for e in client.get("/events").json() if e["external_id"] == "future-1")
+    assert stored["received_at"][:4] == str(datetime.now(UTC).year)  # not 2035
+
+
 def test_post_valid_event_returns_201_with_id(client):
     response = client.post("/events", json=make_event())
     assert response.status_code == 201

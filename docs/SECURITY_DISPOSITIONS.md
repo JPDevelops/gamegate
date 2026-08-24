@@ -49,7 +49,7 @@ no exception.
 | 12 | Bot protection | Only /health is unauthenticated (trivial); no public forms |
 | 13 | Parameterize queries | ✅ all SQL uses ? placeholders (only fixed-table-name DELETE excepted) |
 | 14 | Validate all input | ✅ Pydantic on every request body; enums 422 bad values |
-| 15 | Escape user content | ✅ esc() (escapes & < > " ') on dashboard-rendered fields including connector name/detail/href; overlay is tkinter (no HTML) |
+| 15 | Escape user content | ⚠️ Partial. esc() (escapes & < > " ') covers dashboard TEXT sinks; attacker-controlled fields (sender/title) land in text context and are escaped. BUT esc() is HTML-entity escaping and the template also interpolates ids into inline `onclick="…'${esc(id)}'…"` handlers — the wrong escaper for a JS-string sink. Not exploitable today only because those ids are server-generated uuids, not user input. Real fix is tracked (M24: drop CSP `unsafe-inline`, move handlers to addEventListener). Do NOT add a user-controlled value to an inline handler until then. Overlay is tkinter (no HTML sink). |
 | 16 | Restrict file uploads | N/A — no uploads |
 | 17 | Trim API responses | ✅ typed response_model on returns |
 | 18 | Security headers | ✅ SecurityHeadersMiddleware (nosniff, DENY, CSP, Referrer, Permissions) |
