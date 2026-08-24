@@ -134,8 +134,16 @@ class SafeClassifier:
         return self.fallback.classify(event)
 
 
+_classifier_cache: dict[bool, "SafeClassifier"] = {}
+
+
 def build_classifier() -> SafeClassifier:
-    primary = None
-    if os.environ.get("CLASSIFIER_ENABLED", "").lower() == "true":
-        primary = OpenAIClassifier()
-    return SafeClassifier(primary, DeterministicClassifier())
+    """Reuse the classifier (and thus its httpx.Client) instead of building a new
+    one — and leaking its connection pool — on every request (M1). Keyed on the
+    enabled flag so a dashboard toggle is still reflected. httpx.Client is safe to
+    share across the threadpool."""
+    enabled = os.environ.get("CLASSIFIER_ENABLED", "").lower() == "true"
+    if enabled not in _classifier_cache:
+        primary = OpenAIClassifier() if enabled else None
+        _classifier_cache[enabled] = SafeClassifier(primary, DeterministicClassifier())
+    return _classifier_cache[enabled]

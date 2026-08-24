@@ -109,12 +109,15 @@ def build_client() -> discord.Client:
         if text in ("!status", "!digest") and message.author.id != owner_id:
             return
         if text == "!status":
+            # api.* are blocking urllib calls — run them off the event loop so
+            # one slow HTTP call can't stall the whole bot (M3).
+            status = await asyncio.to_thread(api.get_status)
             await message.channel.send(
-                format_status_reply(api.get_status()), allowed_mentions=no_mentions
+                format_status_reply(status), allowed_mentions=no_mentions
             )
             return
         if text == "!digest":
-            preview = api.get_digest_preview()
+            preview = await asyncio.to_thread(api.get_digest_preview)
             await message.channel.send(
                 preview.get("text", "Nothing queued.") if preview else "API unreachable.",
                 allowed_mentions=no_mentions,

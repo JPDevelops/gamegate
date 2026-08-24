@@ -1,6 +1,6 @@
 [project]
 name = "gamegate"
-version = "0.1.0"
+version = "0.2.0"
 description = "Detects gaming sessions, holds non-urgent Gmail/Slack/Discord messages, and delivers a post-game digest."
 requires-python = ">=3.12"
 dependencies = [
