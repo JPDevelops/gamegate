@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.deps import get_event_repo, get_ingest_service
 from app.models.event import Event, EventIn
@@ -44,7 +44,7 @@ def read_all(repo: EventRepoDep) -> dict:
 
 
 class UnreadBulk(BaseModel):
-    ids: list[str]
+    ids: list[str] = Field(max_length=500)  # cap the bulk op (N5)
 
 
 @router.post("/events/unread")

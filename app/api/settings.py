@@ -4,15 +4,13 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.db import get_database
+from app.deps import get_settings_service
 from app.security import require_api_token
 from app.services.settings_service import SettingsService
 
 router = APIRouter(dependencies=[Depends(require_api_token)])
 
-
-def get_settings_service() -> SettingsService:
-    return SettingsService(get_database())
-
+# get_settings_service lives in app.deps (single definition, N2).
 SettingsDep = Annotated[SettingsService, Depends(get_settings_service)]
 
 
