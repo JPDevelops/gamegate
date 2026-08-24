@@ -6,7 +6,7 @@ is asked at most once per game name.
 """
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import httpx
@@ -21,10 +21,21 @@ log = logging.getLogger("gamegate.art")
 router = APIRouter(dependencies=[Depends(require_api_token)])
 
 API_BASE = "https://www.steamgriddb.com/api/v2"
+NEGATIVE_TTL = timedelta(days=7)  # re-check "no art" results after a week (N32)
 
 
 def _client() -> httpx.Client:
     return httpx.Client(timeout=8)
+
+
+def _negative_expired(fetched_at: str) -> bool:
+    try:
+        when = datetime.fromisoformat(fetched_at)
+    except (TypeError, ValueError):
+        return True  # unparseable timestamp → re-fetch
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return datetime.now(UTC) - when > NEGATIVE_TTL
 
 
 def lookup_art(game: str, client: httpx.Client, api_key: str) -> str:
@@ -58,11 +69,15 @@ def game_art(game: str) -> RedirectResponse:
         raise HTTPException(status_code=404, detail="no art")
 
     conn = get_database().connection()
-    row = conn.execute("SELECT url FROM art_cache WHERE game = ?", (game,)).fetchone()
-    if row is not None:
-        if not row["url"]:
-            raise HTTPException(status_code=404, detail="no art")
+    row = conn.execute(
+        "SELECT url, fetched_at FROM art_cache WHERE game = ?", (game,)
+    ).fetchone()
+    if row is not None and row["url"]:
         return RedirectResponse(row["url"], status_code=307)
+    if row is not None and not row["url"] and not _negative_expired(row["fetched_at"]):
+        # A cached miss is honored only for NEGATIVE_TTL, so a game that had no
+        # art on first lookup can pick it up later once SteamGridDB adds it (N32).
+        raise HTTPException(status_code=404, detail="no art")
 
     with _client() as client:  # context-managed so the connection is closed (N31)
         url = lookup_art(game, client, api_key)
