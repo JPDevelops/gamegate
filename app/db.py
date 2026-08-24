@@ -75,15 +75,18 @@ class Database:
         self._local = threading.local()
         with self.connection() as conn:
             conn.executescript(SCHEMA)
-            # Lightweight migration: columns added after first release.
+            # Lightweight migration: columns added after first release. Only
+            # swallow the specific "duplicate column" case (already applied) —
+            # a locked db or I/O error must still surface (N29).
             for migration in (
                 "ALTER TABLE sessions ADD COLUMN app_id TEXT",
                 "ALTER TABLE events ADD COLUMN read_at TEXT",
             ):
                 try:
                     conn.execute(migration)
-                except sqlite3.OperationalError:
-                    pass  # already present
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
 
     def connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)

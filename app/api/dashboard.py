@@ -137,7 +137,9 @@ def connections(
     )
 
     classifier = (
-        {"state": "connected", "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-5-mini')} — deterministic fallback always on",
+        {"state": "connected",
+         "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-5-mini')} — "
+                   "deterministic fallback always on",
          "can_disconnect": True}
         if os.environ.get("CLASSIFIER_ENABLED", "").lower() == "true"
         else {"state": "disconnected", "detail": "Deterministic rules only",
@@ -153,7 +155,8 @@ def connections(
             {"id": "discord", "name": "Discord", "desc": "Messages from your server"},
             {"id": "gmail", "name": "Gmail", "desc": "Read-only inbox monitoring"},
             {"id": "slack", "name": "Slack", "desc": "Coming in a later version"},
-            {"id": "classifier", "name": "AI classifier", "desc": "Smart prioritization (with fallback)"},
+            {"id": "classifier", "name": "AI classifier",
+             "desc": "Smart prioritization (with fallback)"},
         ],
         "settings": {
             "Version": __version__,

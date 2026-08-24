@@ -29,7 +29,6 @@ def test_auth_rate_limit_blocks_after_repeated_failures(tmp_path, monkeypatch):
         codes = [c.post("/events", json={}).status_code for _ in range(12)]
         assert 429 in codes  # brute force eventually throttled
     get_settings.cache_clear()
-    import pytest  # noqa
 
 
 def test_rate_limited_429_still_carries_security_headers(tmp_path, monkeypatch):

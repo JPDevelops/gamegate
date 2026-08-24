@@ -57,14 +57,6 @@ def enable_dpi_awareness() -> None:
         log.debug("DPI awareness not applied (non-Windows or already set)")
 
 
-def compute_card_height(body_lines: int, screen_h: int, scale: float = 1.0) -> int:
-    """Content-hugging height, clamped to [MIN_HEIGHT, 15% of screen].
-    scale = DPI factor: layout must grow with Windows display scaling or the
-    (DPI-scaled) text outgrows its pixel budget — Jules' bar-through-text bug."""
-    wanted = int((V_PAD + HEADER_H + TITLE_H + body_lines * LINE_H + V_PAD + 6) * scale)
-    return max(int(MIN_HEIGHT * scale), min(wanted, int(screen_h * MAX_HEIGHT_FRACTION)))
-
-
 def compute_geometry(
     screen_w: int, screen_h: int, height: int | None = None, margin: int = MARGIN_PX
 ) -> tuple[int, int, int, int]:
