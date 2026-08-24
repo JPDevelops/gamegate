@@ -25,6 +25,8 @@ from app.security import (
     COOKIE_NAME,
     SESSION_TTL_SECONDS,
     constant_time_equals,
+    consume_login_ticket,
+    issue_login_ticket,
     issue_session_cookie,
     require_api_token,
     verify_session_cookie,
@@ -52,12 +54,16 @@ LOGIN_PAGE = """<!doctype html><meta charset="utf-8">
 def dashboard(
     request: Request,
     key: str = "",
+    ticket: str = "",
     gamegate_token: Annotated[str | None, Cookie()] = None,
 ) -> HTMLResponse:
     expected = get_settings().api_token
     logged_in = verify_session_cookie(gamegate_token, expected) if expected else False
+    # A one-time ?ticket= (minted via POST /auth/ticket) logs in without ever
+    # putting the master token in the URL; ?key= stays supported for the DM link.
+    ticket_ok = bool(expected) and bool(ticket) and consume_login_ticket(ticket)
     key_ok = bool(expected) and constant_time_equals(key, expected)
-    if key_ok and not logged_in:
+    if (key_ok or ticket_ok) and not logged_in:
         # Exchange the one-time link for a signed session cookie (never the raw
         # token) and drop the key from the URL.
         response = RedirectResponse("/app", status_code=303)
@@ -71,7 +77,7 @@ def dashboard(
             secure=over_https, samesite="lax", max_age=SESSION_TTL_SECONDS,
         )
         return response
-    if expected and not logged_in and not key_ok:
+    if expected and not logged_in and not key_ok and not ticket_ok:
         return HTMLResponse(LOGIN_PAGE, status_code=401)
     # Fill the version placeholder from the package version so the sidebar can
     # never drift from pyproject again (the old hardcoded "v0.1" outlived 0.2.0).
@@ -85,6 +91,15 @@ def logout() -> RedirectResponse:
     response = RedirectResponse("/app", status_code=303)
     response.delete_cookie(COOKIE_NAME)
     return response
+
+
+@router.post("/auth/ticket", dependencies=[Depends(require_api_token)])
+def mint_login_ticket() -> dict:
+    """Mint a short-lived, single-use login ticket. A holder of the master token
+    (the desktop app) calls this over the authenticated header, then opens
+    /app?ticket=<ticket> — so the master token never appears in a URL (review
+    MAJOR: token-in-URL)."""
+    return {"ticket": issue_login_ticket()}
 
 
 @router.get("/digests", dependencies=[Depends(require_api_token)])

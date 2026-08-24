@@ -174,11 +174,25 @@ def test_single_instance_lock_blocks_second_copy():
     third.close()
 
 
-def test_window_url_carries_login_key():
+def test_window_url_prefers_a_one_time_ticket(monkeypatch):
+    """The master token must stay out of the window URL: when the server issues a
+    one-time ticket, the URL carries ?ticket=; it falls back to ?key= only when
+    the server is too old to mint one (review MAJOR: token-in-URL)."""
+    import tray_app
     from tray_app import build_window_url
 
+    # server mints a ticket → token never appears in the URL
+    monkeypatch.setattr(tray_app, "_mint_login_ticket", lambda base, token: "TICKET1")
     url = build_window_url({"api_url": "http://server/", "api_token": "tok123"})
-    assert url == "http://server/app?key=tok123"
+    assert url == "http://server/app?ticket=TICKET1"
+    assert "tok123" not in url
+
+    # older server (no ticket) → fall back to the key link
+    monkeypatch.setattr(tray_app, "_mint_login_ticket", lambda base, token: None)
+    assert build_window_url({"api_url": "http://server/", "api_token": "tok123"}) \
+        == "http://server/app?key=tok123"
+
+    # no token configured → plain URL
     assert build_window_url({"api_url": "http://server"}) == "http://server/app"
 
 

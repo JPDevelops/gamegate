@@ -271,12 +271,33 @@ def _child_env() -> dict:
     return env
 
 
+def _mint_login_ticket(base: str, token: str) -> str | None:
+    """Ask the server for a one-time login ticket (over the authenticated header)
+    so the master token never has to go in the window URL. Returns None if the
+    server is older and doesn't offer /auth/ticket — the caller falls back."""
+    try:
+        request = urllib.request.Request(
+            f"{base}/auth/ticket", method="POST", data=b"{}",
+            headers={"X-GameGate-Token": token, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read() or "null").get("ticket")
+    except Exception:  # noqa: BLE001 — any failure just falls back to ?key=
+        return None
+
+
 def build_window_url(config: dict) -> str:
-    """Dashboard URL for the desktop window; the key logs the webview in
-    once, after which the HttpOnly cookie takes over."""
+    """Dashboard URL for the desktop window. Prefer a one-time ?ticket= (minted
+    over the authenticated header) so the master token stays out of the URL /
+    webview history; fall back to ?key= against an older server."""
     base = config["api_url"].rstrip("/")
     token = config.get("api_token", "")
-    return f"{base}/app?key={token}" if token else f"{base}/app"
+    if not token:
+        return f"{base}/app"
+    ticket = _mint_login_ticket(base, token)
+    if ticket:
+        return f"{base}/app?ticket={ticket}"
+    return f"{base}/app?key={token}"
 
 
 def open_window() -> None:

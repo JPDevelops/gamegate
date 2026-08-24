@@ -23,6 +23,28 @@ def test_app_without_key_or_cookie_shows_login(secured):
     assert "access link" in response.text
 
 
+def test_one_time_ticket_logs_in_without_the_token_in_the_url(secured):
+    """MAJOR: a holder of the master token mints a single-use ticket over the
+    authenticated header, then /app?ticket= logs the browser in and swaps for a
+    cookie — the master token never appears in a URL. The ticket is one-use."""
+    minted = secured.post("/auth/ticket", headers={"X-GameGate-Token": "dash-secret"})
+    assert minted.status_code == 200
+    ticket = minted.json()["ticket"]
+
+    resp = secured.get("/app", params={"ticket": ticket}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "gamegate_token=" in resp.headers["set-cookie"]
+    assert secured.get("/app").status_code == 200          # cookie now authenticates
+
+    # Single-use: the same ticket can't log a fresh browser in again.
+    fresh = TestClient(app)
+    assert fresh.get("/app", params={"ticket": ticket}).status_code == 401
+
+
+def test_minting_a_ticket_requires_auth(secured):
+    assert secured.post("/auth/ticket").status_code == 401
+
+
 def test_key_exchanges_for_cookie_then_serves_dashboard(secured):
     response = secured.get("/app", params={"key": "dash-secret"}, follow_redirects=False)
     assert response.status_code == 303
