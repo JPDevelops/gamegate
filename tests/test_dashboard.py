@@ -131,6 +131,22 @@ def test_silent_connector_goes_stale(client, monkeypatch, tmp_path):
     assert "No heartbeat" in gmail["detail"]
 
 
+def test_agent_update_status_surfaces_in_connections(client):
+    """The tray reports pending updates; the dashboard Settings area reads the
+    same state so it can show 'Latest version' vs 'Update available' (review)."""
+    from app.services import agent_status
+
+    try:
+        client.post("/agent/update-status", json={"pending": 0, "build": "abc123"})
+        agent = client.get("/connections").json()["agent"]
+        assert agent["pending"] == 0 and agent["build"] == "abc123"
+
+        client.post("/agent/update-status", json={"pending": 3, "build": "abc123"})
+        assert client.get("/connections").json()["agent"]["pending"] == 3
+    finally:
+        agent_status._state.update({"pending": None, "build": None, "at": None})
+
+
 def test_digest_history_lists_recent_with_rendered_text(client):
     client.post("/status", json={"state": "gaming", "application": "g.exe"})
     client.post("/status", json={"state": "available"})

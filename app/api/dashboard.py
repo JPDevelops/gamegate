@@ -212,11 +212,15 @@ def connections(
     _apply_health(gmail, health_repo.get("gmail"))
     _apply_health(discord, health_repo.get("discord"))
 
+    from app.services.agent_status import get_agent_update
+    agent = get_agent_update()  # desktop update status (pending/build), for Settings
+
     return {
         "discord": discord,
         "gmail": gmail,
         "slack": slack,
         "classifier": classifier,
+        "agent": agent,
         "catalog": [
             {"id": "discord", "name": "Discord", "desc": "Messages from your server"},
             {"id": "gmail", "name": "Gmail", "desc": "Read-only inbox monitoring"},
