@@ -18,8 +18,18 @@ Why not native Windows toasts: Focus Assist suppresses them during
 fullscreen gaming — exactly when GameGate's break-through matters most.
 """
 import logging
+import threading
 
 log = logging.getLogger("gamegate.overlay")
+
+# Serialize ALL Tk rendering. show_overlay (pump thread) and show_update_prompt
+# (update-check thread) each create their own tk.Tk() + mainloop(); Tk is not
+# thread-safe and two live roots in two threads can crash. This lock guarantees
+# at most ONE root exists at a time — a notification arriving during an update
+# prompt simply waits for it to close, then renders (review MAJOR: concurrent Tk
+# interpreters). Blocking (not try-acquire) so a busy UI never DROPS a card — the
+# pump's poison-guard must not mistake "UI busy" for "card failed".
+_ui_lock = threading.Lock()
 
 WIDTH_FRACTION = 0.26
 MAX_HEIGHT_FRACTION = 0.15
@@ -95,6 +105,14 @@ def _badge_photo(size: int = 22):
 
 
 def show_overlay(
+    title: str, body: str, duration_s: int = DEFAULT_DURATION_S, sound: bool = True
+) -> bool:
+    """Public entry: serialize rendering so only one Tk root is ever alive."""
+    with _ui_lock:
+        return _show_overlay(title, body, duration_s, sound)
+
+
+def _show_overlay(
     title: str, body: str, duration_s: int = DEFAULT_DURATION_S, sound: bool = True
 ) -> bool:
     """Display the overlay card. Returns False on any failure so the pump
@@ -257,6 +275,12 @@ def show_overlay(
 
 
 def show_update_prompt(change_count: int) -> bool:
+    """Public entry: serialize rendering so it never coexists with an overlay."""
+    with _ui_lock:
+        return _show_update_prompt(change_count)
+
+
+def _show_update_prompt(change_count: int) -> bool:
     """'Update available' card with real buttons (Jules' spec). Returns True
     for Update now, False for Later/dismiss. Blocking; call from a worker."""
     try:
