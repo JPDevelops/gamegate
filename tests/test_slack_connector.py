@@ -31,7 +31,9 @@ def test_normalize_mention_shape():
     assert payload["source"] == "slack"
     assert payload["external_id"] == "C42:1755900000.000100"
     assert payload["requires_action"] is True
-    assert payload["received_at"].startswith("2025") or payload["received_at"].startswith("2026")
+    # The Slack ts 1755900000.000100 maps to a fixed instant — assert it exactly
+    # instead of an "or 2026" branch that could never run (review NITPICK).
+    assert payload["received_at"].startswith("2025-08-22T22:00:00")
 
 
 def test_non_mention_events_are_ignored():

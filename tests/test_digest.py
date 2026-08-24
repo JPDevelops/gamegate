@@ -34,6 +34,21 @@ def test_urgent_breaks_through_during_gaming(client):
     assert client.post(f"/notifications/{notification_id}/ack").status_code == 404
 
 
+def test_abandoned_notification_leaves_the_pending_queue(client):
+    """Review MAJOR: a notification the client gave up on is dead-lettered, so it
+    leaves the pending queue (can't wedge newer items) and can't be abandoned or
+    acked twice."""
+    start_gaming(client)
+    client.post("/events", json=make_event(external_id="u9", priority="urgent"))
+    nid = client.get("/notifications/pending").json()[0]["id"]
+
+    assert client.post(f"/notifications/{nid}/abandon").status_code == 200
+    assert client.get("/notifications/pending").json() == []   # left the queue
+    # Already dead-lettered → abandon and ack both 404 now.
+    assert client.post(f"/notifications/{nid}/abandon").status_code == 404
+    assert client.post(f"/notifications/{nid}/ack").status_code == 404
+
+
 def test_session_end_produces_exactly_one_digest(client):
     start_gaming(client)
     client.post("/events", json=make_event(external_id="d1", priority="actionable"))
@@ -79,6 +94,22 @@ def test_digest_is_deterministic(client):
     latest = client.get("/digest/latest").json()
     titles = [item["title"] for item in latest["items"]]
     assert titles == ["event-c", "event-a"]
+
+    # Actually prove determinism (the test name's claim): the pure builder called
+    # twice on the same events yields byte-identical output — not just once.
+    import json
+
+    from app.models.event import Event
+    from app.services.digest_service import build_digest
+
+    events = [
+        Event(source="gmail", external_id=f"d{i}", sender="s", title=f"t{i}",
+              received_at=f"2026-08-24T00:00:0{i}+00:00", priority=p)
+        for i, p in enumerate(["urgent", "actionable", "informational"])
+    ]
+    first = build_digest({"id": "x"}, events)
+    second = build_digest({"id": "x"}, events)
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
 
 
 def test_stale_events_never_interrupt(client):

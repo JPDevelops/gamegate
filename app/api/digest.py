@@ -50,6 +50,15 @@ def ack_digest(digest_id: str, digests: DigestRepoDep) -> dict:
     return {"acknowledged": digest_id}
 
 
+@router.post("/digests/{digest_id}/abandon")
+def abandon_digest(digest_id: str, digests: DigestRepoDep) -> dict:
+    """The client gave up delivering this digest — dead-letter it so it leaves
+    the pending queue instead of wedging newer ones behind it."""
+    if not digests.abandon(digest_id):
+        raise HTTPException(status_code=404, detail="Unknown or already-delivered digest")
+    return {"abandoned": digest_id}
+
+
 @router.get("/notifications/pending")
 def pending_notifications(notifications: NotificationRepoDep) -> list[dict]:
     return notifications.pending()
@@ -60,3 +69,12 @@ def ack_notification(notification_id: str, notifications: NotificationRepoDep) -
     if not notifications.ack(notification_id):
         raise HTTPException(status_code=404, detail="Unknown or already-delivered notification")
     return {"acknowledged": notification_id}
+
+
+@router.post("/notifications/{notification_id}/abandon")
+def abandon_notification(notification_id: str, notifications: NotificationRepoDep) -> dict:
+    """The client exhausted its retries on this notification — dead-letter it so
+    it leaves the pending queue instead of wedging newer ones behind it."""
+    if not notifications.abandon(notification_id):
+        raise HTTPException(status_code=404, detail="Unknown or already-delivered notification")
+    return {"abandoned": notification_id}

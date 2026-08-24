@@ -80,6 +80,16 @@ class GameGateApi:
     def ack_notification(self, notification_id: str) -> bool:
         return self._post_ok(f"/notifications/{notification_id}/ack")
 
+    def heartbeat(self, name: str, ok: bool, detail: str | None = None) -> bool:
+        """Best-effort liveness report; never raises so it can't crash a poll."""
+        try:
+            return self.client.post(
+                f"/connectors/{name}/heartbeat", json={"ok": ok, "detail": detail}
+            ).status_code == 200
+        except httpx.HTTPError as exc:
+            log.warning("heartbeat %s failed: %s", name, exc)
+            return False
+
     def _get_json(self, path: str):
         try:
             response = self.client.get(path)

@@ -299,6 +299,19 @@ class DigestRepository:
             )
         return cur.rowcount > 0
 
+    def abandon(self, digest_id: str) -> bool:
+        """Dead-letter: the client gave up delivering this digest. Mark it
+        delivered with failed_at so it leaves the pending queue and can't wedge
+        newer digests behind it, while staying auditable."""
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE digests SET delivered = 1, failed_at = ?"
+                " WHERE id = ? AND delivered = 0",
+                (_now(), digest_id),
+            )
+        return cur.rowcount > 0
+
     @staticmethod
     def _to_dict(row) -> dict:
         return {
@@ -346,3 +359,51 @@ class NotificationRepository:
                 (notification_id,),
             )
         return cur.rowcount > 0
+
+    def abandon(self, notification_id: str) -> bool:
+        """Dead-letter: the client exhausted its retries on this notification.
+        Mark it delivered with failed_at so it leaves the pending queue and can't
+        wedge newer notifications behind it, while staying auditable."""
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE notifications SET delivered = 1, failed_at = ?"
+                " WHERE id = ? AND delivered = 0",
+                (_now(), notification_id),
+            )
+        return cur.rowcount > 0
+
+
+class ConnectorHealthRepository:
+    """Per-connector liveness. Connectors report a heartbeat on each poll; the
+    dashboard reads it so 'connected' can mean actually-working, not just a flag
+    (review MAJOR: enable-flag masquerading as health)."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def record(self, name: str, ok: bool, detail: str | None = None) -> None:
+        now = _now()
+        conn = self.db.connection()
+        with conn:
+            if ok:
+                conn.execute(
+                    "INSERT INTO connector_health (name, last_success, updated_at)"
+                    " VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET"
+                    " last_success = excluded.last_success, updated_at = excluded.updated_at",
+                    (name, now, now),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO connector_health (name, last_error, error_detail, updated_at)"
+                    " VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET"
+                    " last_error = excluded.last_error, error_detail = excluded.error_detail,"
+                    " updated_at = excluded.updated_at",
+                    (name, now, (detail or "")[:500], now),
+                )
+
+    def get(self, name: str) -> dict | None:
+        row = self.db.connection().execute(
+            "SELECT * FROM connector_health WHERE name = ?", (name,)
+        ).fetchone()
+        return dict(row) if row else None

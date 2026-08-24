@@ -10,11 +10,12 @@ Browsers don't *store* the master token: the first `/app?key=<token>` visit
 immediately exchanges it for a signed, expiring **session cookie**
 (issue_session_cookie) and 303-redirects, so what persists is a time-boxed
 credential that is not the master token, and rotating GAMEGATE_API_TOKEN
-invalidates every outstanding cookie at once. Caveat, not yet closed: the token
-does travel once in that opening `?key=` URL, so it can land in local browser/
-webview history for that request. Server logs are scrubbed of it (nginx logs
-`$uri`, uvicorn runs `--no-access-log`), but a one-time login ticket distinct
-from the API token is the real fix (tracked as deferred hardening).
+invalidates every outstanding cookie at once. The desktop app keeps the token
+out of URLs entirely: it mints a single-use, short-TTL **login ticket** over the
+authenticated header (POST /auth/ticket) and opens `/app?ticket=…`. The
+shareable DM `?key=…` link still carries the token once for that request (server
+logs are scrubbed — nginx logs `$uri`, uvicorn runs `--no-access-log`), so the
+ticket path is preferred for anything programmatic.
 """
 import hashlib
 import hmac
@@ -69,6 +70,32 @@ def _sign(secret: str, expiry: int, nonce: str) -> str:
     return hmac.new(
         secret.encode("utf-8"), f"{expiry}.{nonce}".encode(), hashlib.sha256
     ).hexdigest()
+
+
+# One-time login tickets: a short-lived, single-use credential DISTINCT from the
+# master token. The desktop app (which holds the token) requests a ticket over
+# the authenticated header, then opens /app?ticket=<ticket> — so the master token
+# never lands in a URL, browser/webview history, or a copied link (review MAJOR).
+# In-memory is fine: the API runs a single worker, and a lost ticket just means
+# re-opening the dashboard.
+LOGIN_TICKET_TTL_SECONDS = 120
+_login_tickets: dict[str, float] = {}
+
+
+def issue_login_ticket() -> str:
+    now = time.time()
+    for ticket, expiry in list(_login_tickets.items()):
+        if expiry < now:
+            del _login_tickets[ticket]
+    ticket = secrets.token_urlsafe(24)
+    _login_tickets[ticket] = now + LOGIN_TICKET_TTL_SECONDS
+    return ticket
+
+
+def consume_login_ticket(ticket: str | None) -> bool:
+    """Atomically claim a login ticket: single-use (popped) and TTL-checked."""
+    expiry = _login_tickets.pop(ticket, None) if ticket else None
+    return expiry is not None and expiry >= time.time()
 
 
 def require_api_token(

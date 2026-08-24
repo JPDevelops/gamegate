@@ -23,6 +23,28 @@ def test_app_without_key_or_cookie_shows_login(secured):
     assert "access link" in response.text
 
 
+def test_one_time_ticket_logs_in_without_the_token_in_the_url(secured):
+    """MAJOR: a holder of the master token mints a single-use ticket over the
+    authenticated header, then /app?ticket= logs the browser in and swaps for a
+    cookie — the master token never appears in a URL. The ticket is one-use."""
+    minted = secured.post("/auth/ticket", headers={"X-GameGate-Token": "dash-secret"})
+    assert minted.status_code == 200
+    ticket = minted.json()["ticket"]
+
+    resp = secured.get("/app", params={"ticket": ticket}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "gamegate_token=" in resp.headers["set-cookie"]
+    assert secured.get("/app").status_code == 200          # cookie now authenticates
+
+    # Single-use: the same ticket can't log a fresh browser in again.
+    fresh = TestClient(app)
+    assert fresh.get("/app", params={"ticket": ticket}).status_code == 401
+
+
+def test_minting_a_ticket_requires_auth(secured):
+    assert secured.post("/auth/ticket").status_code == 401
+
+
 def test_key_exchanges_for_cookie_then_serves_dashboard(secured):
     response = secured.get("/app", params={"key": "dash-secret"}, follow_redirects=False)
     assert response.status_code == 303
@@ -65,6 +87,25 @@ def test_connections_reports_truth(client, monkeypatch):
     assert body["slack"]["state"] == "disabled"
     assert body["discord"]["state"] == "needs setup"
     assert "Version" in body["settings"]
+
+
+def test_connector_heartbeat_drives_health(client, monkeypatch, tmp_path):
+    """MAJOR: 'connected' should reflect live health, not just the enable flag.
+    A connected Gmail whose last heartbeat was an error shows as 'degraded'."""
+    token = tmp_path / "token.json"
+    token.write_text("{}")  # exists → gmail counts as 'connected'
+    monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("GMAIL_ENABLED", "true")
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token))
+
+    # healthy heartbeat → stays connected
+    client.post("/connectors/gmail/heartbeat", json={"ok": True})
+    assert client.get("/connections").json()["gmail"]["state"] == "connected"
+    # a later error heartbeat → degraded, with the detail surfaced
+    client.post("/connectors/gmail/heartbeat", json={"ok": False, "detail": "token expired"})
+    gmail = client.get("/connections").json()["gmail"]
+    assert gmail["state"] == "degraded"
+    assert "token expired" in gmail["detail"]
 
 
 def test_digest_history_lists_recent_with_rendered_text(client):

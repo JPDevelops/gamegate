@@ -83,4 +83,21 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
+    # Liveness only: the process is up and answering. Does NOT prove the DB is
+    # reachable or ingestion works — use /ready for that (review MINOR).
     return HealthResponse(status="ok", version=__version__)
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """Readiness: actually touch SQLite so a broken/locked/unmigrated database
+    reports 503 instead of the always-ok /health masking it."""
+    from app.db import get_database
+
+    try:
+        get_database().connection().execute("SELECT 1 FROM status LIMIT 1").fetchone()
+    except Exception as exc:  # noqa: BLE001 — any DB failure is 'not ready'
+        return JSONResponse(
+            {"status": "not-ready", "detail": str(exc)}, status_code=503
+        )
+    return JSONResponse({"status": "ready", "version": __version__})

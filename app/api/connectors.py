@@ -12,11 +12,15 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
+from app.deps import get_connector_health_repo
 from app.security import require_api_token
+from app.services.repositories import ConnectorHealthRepository
 
 log = logging.getLogger("gamegate.connectors")
 
@@ -176,3 +180,21 @@ def connect(name: str) -> dict:
             detail="Slack ships in a later version (product decision)",
         )
     raise HTTPException(status_code=404, detail=f"Unknown connector {name!r}")
+
+
+class Heartbeat(BaseModel):
+    ok: bool
+    detail: str | None = None
+
+
+@router.post("/connectors/{name}/heartbeat")
+def heartbeat(
+    name: str,
+    beat: Heartbeat,
+    health: Annotated[ConnectorHealthRepository, Depends(get_connector_health_repo)],
+) -> dict:
+    """A connector reports liveness each poll: ok=true on a successful cycle,
+    ok=false (with detail) on an error. The dashboard reads this so 'connected'
+    reflects a working connector, not just an enable flag (review MAJOR)."""
+    health.record(name, beat.ok, beat.detail)
+    return {"recorded": name}

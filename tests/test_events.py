@@ -16,6 +16,18 @@ def make_event(**overrides):
     return event
 
 
+def test_deeply_nested_metadata_is_rejected(client):
+    """A pathologically nested metadata blob is 422'd on depth before it can burn
+    CPU serializing (review MINOR: unbounded nesting)."""
+    nested = {}
+    cur = nested
+    for _ in range(60):  # deeper than the 32-level cap
+        cur["x"] = {}
+        cur = cur["x"]
+    resp = client.post("/events", json=make_event(external_id="deep", metadata=nested))
+    assert resp.status_code == 422
+
+
 def test_naive_received_at_is_coerced_and_digest_does_not_500(client):
     """A naive received_at is normalized to UTC at the boundary, so mixing it
     with aware timestamps of the same priority never crashes digest sorting

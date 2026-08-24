@@ -20,17 +20,23 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import __version__
 from app.api.connectors import service_active
 from app.config import get_settings
-from app.deps import get_digest_repo, get_settings_service
+from app.deps import (
+    get_connector_health_repo,
+    get_digest_repo,
+    get_settings_service,
+)
 from app.security import (
     COOKIE_NAME,
     SESSION_TTL_SECONDS,
     constant_time_equals,
+    consume_login_ticket,
+    issue_login_ticket,
     issue_session_cookie,
     require_api_token,
     verify_session_cookie,
 )
 from app.services.digest_service import render_text
-from app.services.repositories import DigestRepository
+from app.services.repositories import ConnectorHealthRepository, DigestRepository
 from app.services.settings_service import SettingsService
 
 router = APIRouter()
@@ -52,12 +58,16 @@ LOGIN_PAGE = """<!doctype html><meta charset="utf-8">
 def dashboard(
     request: Request,
     key: str = "",
+    ticket: str = "",
     gamegate_token: Annotated[str | None, Cookie()] = None,
 ) -> HTMLResponse:
     expected = get_settings().api_token
     logged_in = verify_session_cookie(gamegate_token, expected) if expected else False
+    # A one-time ?ticket= (minted via POST /auth/ticket) logs in without ever
+    # putting the master token in the URL; ?key= stays supported for the DM link.
+    ticket_ok = bool(expected) and bool(ticket) and consume_login_ticket(ticket)
     key_ok = bool(expected) and constant_time_equals(key, expected)
-    if key_ok and not logged_in:
+    if (key_ok or ticket_ok) and not logged_in:
         # Exchange the one-time link for a signed session cookie (never the raw
         # token) and drop the key from the URL.
         response = RedirectResponse("/app", status_code=303)
@@ -71,7 +81,7 @@ def dashboard(
             secure=over_https, samesite="lax", max_age=SESSION_TTL_SECONDS,
         )
         return response
-    if expected and not logged_in and not key_ok:
+    if expected and not logged_in and not key_ok and not ticket_ok:
         return HTMLResponse(LOGIN_PAGE, status_code=401)
     # Fill the version placeholder from the package version so the sidebar can
     # never drift from pyproject again (the old hardcoded "v0.1" outlived 0.2.0).
@@ -87,6 +97,15 @@ def logout() -> RedirectResponse:
     return response
 
 
+@router.post("/auth/ticket", dependencies=[Depends(require_api_token)])
+def mint_login_ticket() -> dict:
+    """Mint a short-lived, single-use login ticket. A holder of the master token
+    (the desktop app) calls this over the authenticated header, then opens
+    /app?ticket=<ticket> — so the master token never appears in a URL (review
+    MAJOR: token-in-URL)."""
+    return {"ticket": issue_login_ticket()}
+
+
 @router.get("/digests", dependencies=[Depends(require_api_token)])
 def digest_history(
     repo: Annotated[DigestRepository, Depends(get_digest_repo)], limit: int = 10
@@ -97,9 +116,27 @@ def digest_history(
     return digests
 
 
+def _apply_health(conn: dict, health: dict | None) -> dict:
+    """Downgrade a 'connected' connector to 'degraded' when its last heartbeat
+    was an error more recent than its last success — so the dashboard reflects
+    live health, not just the enable flag (review MAJOR). Also surface the last
+    error detail. Unknown health (no heartbeat yet) leaves the state untouched."""
+    if conn.get("state") != "connected" or not health:
+        return conn
+    last_ok = health.get("last_success")
+    last_err = health.get("last_error")
+    if last_err and (not last_ok or last_err > last_ok):
+        conn["state"] = "degraded"
+        conn["detail"] = f"Last run errored: {health.get('error_detail') or 'unknown'}"[:200]
+    elif last_ok:
+        conn["detail"] = f"{conn['detail']} (last ok {last_ok[:19]}Z)"
+    return conn
+
+
 @router.get("/connections", dependencies=[Depends(require_api_token)])
 def connections(
     settings_service: Annotated[SettingsService, Depends(get_settings_service)],
+    health_repo: Annotated[ConnectorHealthRepository, Depends(get_connector_health_repo)],
 ) -> dict:
     settings = get_settings()
     prefs = settings_service.get_all()
@@ -152,6 +189,11 @@ def connections(
         else {"state": "disconnected", "detail": "Deterministic rules only",
               "can_connect": True}
     )
+
+    # Fold in live heartbeat health: a connected connector whose last poll errored
+    # shows as 'degraded', not a green 'connected' flag.
+    _apply_health(gmail, health_repo.get("gmail"))
+    _apply_health(discord, health_repo.get("discord"))
 
     return {
         "discord": discord,
