@@ -150,16 +150,19 @@ class SessionRepository:
 
     def open(
         self, application: str | None, started_at: str | None, app_id: str | None = None
-    ) -> str:
+    ) -> str | None:
+        """Open a session ONLY if none is currently open (atomic guard against
+        concurrent GAMING transitions each spawning a session)."""
         session_id = uuid4().hex
         conn = self.db.connection()
         with conn:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO sessions (id, application, started_at, app_id)"
-                " VALUES (?, ?, ?, ?)",
+                " SELECT ?, ?, ?, ? WHERE NOT EXISTS"
+                " (SELECT 1 FROM sessions WHERE ended_at IS NULL)",
                 (session_id, application, started_at or _now(), app_id),
             )
-        return session_id
+        return session_id if cur.rowcount > 0 else None
 
     def current(self):
         return self.db.connection().execute(

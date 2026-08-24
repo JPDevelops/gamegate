@@ -25,5 +25,7 @@ def require_api_token(
     if expected is None:
         return
     supplied = x_gamegate_token or gamegate_token or ""
-    if not secrets.compare_digest(supplied, expected):  # constant-time
+    # compare as bytes: compare_digest raises on non-ASCII str (a non-ASCII
+    # token header would otherwise 500 instead of 401).
+    if not secrets.compare_digest(supplied.encode("utf-8", "ignore"), expected.encode()):
         raise HTTPException(status_code=401, detail="Missing or invalid API token")

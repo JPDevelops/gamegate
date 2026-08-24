@@ -109,8 +109,9 @@ def write_token_file(tokens: dict, client_id: str, client_secret: str) -> str:
 @router.get("/connect/gmail")
 def connect_gmail(key: str = "", gamegate_token: str | None = Cookie(default=None)) -> RedirectResponse:
     expected = get_settings().api_token
-    if expected and not secrets.compare_digest(key, expected) \
-            and not secrets.compare_digest(gamegate_token or '', expected):
+    def _eq(a, b):
+        return secrets.compare_digest((a or '').encode('utf-8', 'ignore'), (b or '').encode())
+    if expected and not _eq(key, expected) and not _eq(gamegate_token, expected):
         raise HTTPException(status_code=401, detail="key query parameter required")
     client_id, _secret, redirect_uri = _oauth_config()
     params = urlencode(

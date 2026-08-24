@@ -9,6 +9,10 @@ GET /digests      — digest history for the Inbox tab.
 """
 import os
 import secrets
+
+
+def _ct_eq(a: str, b: str) -> bool:
+    return secrets.compare_digest((a or "").encode("utf-8", "ignore"), (b or "").encode())
 from pathlib import Path
 from typing import Annotated
 
@@ -45,7 +49,7 @@ def dashboard(
     gamegate_token: Annotated[str | None, Cookie()] = None,
 ) -> HTMLResponse:
     expected = get_settings().api_token
-    if expected and secrets.compare_digest(key, expected) and not secrets.compare_digest(gamegate_token or '', expected):
+    if expected and _ct_eq(key, expected) and not _ct_eq(gamegate_token, expected):
         # Exchange the one-time link for a cookie and drop the key from the URL.
         response = RedirectResponse("/app", status_code=303)
         # Secure when the dashboard is reached over HTTPS (nginx sets
@@ -58,8 +62,7 @@ def dashboard(
             max_age=60 * 60 * 24 * 90,
         )
         return response
-    if expected and not secrets.compare_digest(gamegate_token or '', expected) \
-            and not secrets.compare_digest(key, expected):
+    if expected and not _ct_eq(gamegate_token, expected) and not _ct_eq(key, expected):
         return HTMLResponse(LOGIN_PAGE, status_code=401)
     return HTMLResponse(TEMPLATE.read_text())
 
