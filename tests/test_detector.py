@@ -262,3 +262,17 @@ def test_save_config_updates_merges_and_preserves(tmp_path):
     assert data["capture_windows_notifications"] is True
     assert data["windows_notif_prompted"] is True
     assert list(tmp_path.glob(".config.*.tmp")) == []   # atomic write cleaned up
+
+
+def test_config_path_falls_back_to_localappdata_when_install_is_readonly(tmp_path, monkeypatch):
+    """A packaged (MSIX) app runs from a read-only dir, so config must live in a
+    writable per-user LocalAppData folder instead (review: packaging)."""
+    import detector as d
+
+    monkeypatch.setattr(d, "_dir_writable", lambda _p: False)  # simulate read-only install
+    monkeypatch.setattr(d, "app_dir", lambda: tmp_path / "install")   # no config beside it
+    (tmp_path / "install").mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData"))
+    p = d.config_path()
+    assert p == tmp_path / "AppData" / "GameGate" / "config.json"
+    assert p.parent.is_dir()  # created

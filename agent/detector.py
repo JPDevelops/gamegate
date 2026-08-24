@@ -80,18 +80,49 @@ def app_dir() -> Path:
     return Path(__file__).parent
 
 
+def _dir_writable(directory: Path) -> bool:
+    try:
+        probe = directory / ".gg_write_test"
+        probe.write_text("x")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def config_path() -> Path:
+    """Where config.json lives. Next to the app when that folder is writable
+    (source checkout / loose .exe), otherwise a per-user LocalAppData folder — a
+    packaged/installed app (MSIX) runs from a READ-ONLY location, so config must
+    live somewhere writable. Seeds the per-user copy from a bundled
+    config.example.json on first use."""
+    beside = app_dir() / "config.json"
+    if beside.exists() or _dir_writable(app_dir()):
+        return beside
+    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "GameGate"
+    with contextlib.suppress(OSError):
+        base.mkdir(parents=True, exist_ok=True)
+    target = base / "config.json"
+    if not target.exists():
+        example = app_dir() / "config.example.json"
+        if example.exists():
+            with contextlib.suppress(OSError):
+                target.write_text(example.read_text())
+    return target
+
+
 def load_config(path: str | None = None) -> dict:
     config = dict(DEFAULT_CONFIG)
-    config_path = Path(path) if path else app_dir() / "config.json"
-    if config_path.exists():
+    cfg = Path(path) if path else config_path()
+    if cfg.exists():
         try:
-            loaded = json.loads(config_path.read_text())
+            loaded = json.loads(cfg.read_text())
         except (ValueError, OSError) as exc:
             # A hand-edited config.json with a stray comma shouldn't brick the
             # whole tray app with a raw traceback — fall back to defaults and
             # log it so the user can fix the file (review: unguarded config load).
             logging.getLogger("gamegate.detector").warning(
-                "Ignoring unreadable config at %s (%s); using defaults", config_path, exc
+                "Ignoring unreadable config at %s (%s); using defaults", cfg, exc
             )
             loaded = {}
         if isinstance(loaded, dict):
@@ -107,30 +138,30 @@ def save_config_updates(updates: dict, path: str | None = None) -> bool:
     consent flow so the app can flip a setting on itself instead of making the
     user hand-edit JSON. Returns False (and logs) rather than raising on error —
     a failed save must never crash startup."""
-    config_path = Path(path) if path else app_dir() / "config.json"
+    cfg = Path(path) if path else config_path()
     log = logging.getLogger("gamegate.detector")
     try:
         current = {}
-        if config_path.exists():
+        if cfg.exists():
             with contextlib.suppress(ValueError, OSError):
-                loaded = json.loads(config_path.read_text())
+                loaded = json.loads(cfg.read_text())
                 if isinstance(loaded, dict):
                     current = loaded
         current.update(updates)
         fd, tmp = tempfile.mkstemp(
-            dir=str(config_path.parent), prefix=".config.", suffix=".tmp"
+            dir=str(cfg.parent), prefix=".config.", suffix=".tmp"
         )
         try:
             with os.fdopen(fd, "w") as f:
                 json.dump(current, f, indent=2)
-            os.replace(tmp, config_path)  # atomic; never a half-written config
+            os.replace(tmp, cfg)  # atomic; never a half-written config
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(tmp)
             raise
         return True
     except Exception:  # noqa: BLE001 — a bad save must not crash the app
-        log.exception("Could not save config to %s", config_path)
+        log.exception("Could not save config to %s", cfg)
         return False
 
 
