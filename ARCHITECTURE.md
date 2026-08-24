@@ -34,7 +34,7 @@ External services redeliver: Gmail re-polls see the same messages, Slack retries
 1. **Ingestion**: events are unique on `(source, external_id)`. A replay returns HTTP 200 with the original record (vs. 201 for a create) and stores nothing. Source is part of the key because two services may coincidentally share id formats.
 2. **Delivery**: notifications and digests are acked *after* a successful send, and acking is once-only. A deliver-now event queues its notification and only then is marked consumed, so a crash between those writes leaves it in the digest queue — at worst it surfaces twice (a live notification and a digest line), never lost. A crashed connector re-sends at worst; the per-item ack guard prevents the same notification or digest posting twice.
 
-The digest itself is idempotent by construction: building it consumes the queued events (marks them `delivered` with the digest id), so a second session end finds an empty queue.
+The digest is built atomically — the digest INSERT and the event mark-consumed UPDATEs are one transaction — and the DB enforces `UNIQUE(session_id)` on digests, so a session yields **at most one** recap even under a retry or a crash between the two writes. Delivery of notifications/digests to an external surface (desktop app or Discord) is **at-least-once**, not exactly-once: the pump sends then acks, so a send that succeeds while its ack fails can re-deliver. The client de-dupes displays within a process run; across a restart a rare duplicate is possible. We accept at-least-once and keep the digest content deduplicatable, rather than claim a guarantee the transport can't provide.
 
 ## Where persistence happens
 

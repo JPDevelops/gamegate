@@ -99,3 +99,44 @@ def test_concurrent_closes_only_one_wins(client):
 
     winners = [r for r in results if r is not None]
     assert len(winners) == 1, f"expected exactly one close to win, got {len(winners)}"
+
+
+def _open_session_count(db) -> int:
+    return db.connection().execute(
+        "SELECT COUNT(*) c FROM sessions WHERE ended_at IS NULL"
+    ).fetchone()["c"]
+
+
+def test_gaming_reopens_a_lost_session(client):
+    """B1 self-heal: status=gaming with no open session (a crash between the
+    status write and the session write) is repaired on the next poll. On the
+    old transition-only code, a repeat 'gaming' was not 'entering' and nothing
+    reopened."""
+    from app import db as db_module
+
+    db = db_module.get_database()
+    client.post("/status", json={"state": "gaming", "application": "Rust"})
+    # simulate the lost session (close it out-of-band, leaving status=gaming):
+    with db.connection() as conn:
+        conn.execute(
+            "UPDATE sessions SET ended_at = '2020-01-01T00:00:00+00:00'"
+            " WHERE ended_at IS NULL"
+        )
+    assert _open_session_count(db) == 0
+    client.post("/status", json={"state": "gaming", "application": "Rust"})  # same app
+    assert _open_session_count(db) == 1  # reconciled → reopened
+
+
+def test_available_closes_a_stuck_open_session(client):
+    """B1 self-heal: a session left open after status already went non-gaming
+    (crash between the status write and the close) is closed on the next poll."""
+    from app import db as db_module
+
+    db = db_module.get_database()
+    client.post("/status", json={"state": "gaming", "application": "Rust"})
+    # simulate stuck-open: flip status to available WITHOUT closing the session:
+    with db.connection() as conn:
+        conn.execute("UPDATE status SET state='available', application=NULL WHERE id=1")
+    assert _open_session_count(db) == 1  # split-brain: available but session open
+    client.post("/status", json={"state": "available"})
+    assert _open_session_count(db) == 0  # reconciled → closed

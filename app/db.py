@@ -87,6 +87,12 @@ class Database:
                 except sqlite3.OperationalError as exc:
                     if "duplicate column" not in str(exc).lower():
                         raise
+            # At most one digest per session — enforced by the DB, not just by
+            # code, so a retry/race can never create a second recap (review M2).
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_digests_session"
+                " ON digests(session_id) WHERE session_id IS NOT NULL"
+            )
 
     def connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)

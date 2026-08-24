@@ -37,6 +37,10 @@ Win+R → `shell:startup` → drop a shortcut to GameGate.exe there. Done.
 
 ## Reliability contract
 
-Toasts are acked only after they actually show. App closed or toast failed →
-items stay queued on the server and arrive when the app is back. Nothing is
-lost; nothing shows twice.
+Toasts are acked only after they actually show, so nothing is lost — if the app
+is closed or a toast fails, items stay queued on the server and arrive when the
+app is back. Delivery is **at-least-once**: the pump shows-then-acks, so a show
+that succeeds while its ack fails can re-show. Within one app run each item is
+rendered at most once (tracked in memory); across a restart, a rare duplicate is
+possible. An item that fails to show/ack repeatedly is dropped from the client
+after a few attempts (it stays on the server) rather than looping forever.
