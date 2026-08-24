@@ -42,7 +42,7 @@ def _oauth_config() -> tuple[str, str, str]:
     client_id = os.environ.get("GMAIL_OAUTH_CLIENT_ID", "")
     client_secret = os.environ.get("GMAIL_OAUTH_CLIENT_SECRET", "")
     redirect_uri = os.environ.get(
-        "GMAIL_REDIRECT_URI", "https://32.184.199.235.sslip.io/oauth/gmail/callback"
+        "GMAIL_REDIRECT_URI", "https://YOUR-SERVER/oauth/gmail/callback"
     )
     if not client_id or not client_secret:
         raise HTTPException(
