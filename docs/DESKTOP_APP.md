@@ -44,3 +44,27 @@ that succeeds while its ack fails can re-show. Within one app run each item is
 rendered at most once (tracked in memory); across a restart, a rare duplicate is
 possible. An item that fails to show/ack repeatedly is dropped from the client
 after a few attempts (it stays on the server) rather than looping forever.
+
+## Capture ALL Windows notifications (catch-all, opt-in)
+
+GameGate can read **every** notification Windows shows — Discord, Slack, email,
+anything — and route them through the same hold / prioritize / recap engine as
+the built-in connectors. This is the honest way to "manage all my notifications"
+without a Discord self-bot (which violates Discord's ToS): it reads at the OS
+level via the Windows `UserNotificationListener` API, with your permission.
+
+**Enable it:**
+1. Windows: Settings → Privacy & security → Notifications → allow apps to access
+   notifications (and grant GameGate when it prompts on first run).
+2. In `config.json` set `"capture_windows_notifications": true`.
+3. Restart GameGate. Captured notifications flow in as events (source `discord`/
+   `slack`/`gmail`/`system`); GameGate's OWN pop-ups are skipped so it never
+   loops on itself.
+
+**To actually silence the interruptions** (so GameGate becomes your single
+"gate"), turn on Windows **Focus Assist** while gaming — Windows goes quiet and
+GameGate decides what breaks through. Otherwise the source app still shows its
+own toast *and* GameGate captures a copy for the recap.
+
+Requires the `winsdk` package (bundled in the release build). Windows-only — on
+other platforms the capture simply stays off.

@@ -11,7 +11,7 @@ connectors, settings, source-install self-updater).
 |-------------------|--------|----------------------------------|
 | **Website** | BUILT (parked on gh-pages) | One "go public" flip — then live at jpdevelops.github.io/gamegate |
 | **Desktop .exe** | BUILT; self-update works for a source (git) install | Public download tier: a downloaded release exe has no git checkout, so the current `git pull` + rebuild updater doesn't apply to it — the real path is a CI-built **signed** exe on Releases that verifies a release hash/signature before replacing itself (issue #72); code-signing cert also removes the SmartScreen warning |
-| **Easy connectors** | Interactive Connectors tab + Add-a-connector catalog EXIST | Per-app OAuth flows behind the "Connect" buttons (Gmail flow already built as the template); Windows notification-listener for catch-all (issue #48) |
+| **Easy connectors** | Interactive Connectors tab + Add-a-connector catalog EXIST | Per-app OAuth flows behind the "Connect" buttons (Gmail flow already built as the template); Windows notification-listener catch-all — DONE (opt-in, reads all OS notifications) |
 
 So "universal" is less about new features than about **who can use it**.
 

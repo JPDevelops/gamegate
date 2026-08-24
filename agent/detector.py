@@ -38,6 +38,10 @@ DEFAULT_CONFIG = {
     "ignore_processes": [],        # never treat these as games (extends built-ins)
     "auto_detect": True,
     "poll_interval_seconds": 5,
+    # Opt-in: capture ALL Windows notifications (Discord, Slack, email, ...) via
+    # the OS notification listener and feed them into GameGate. Windows-only;
+    # needs a one-time permission grant. Off by default.
+    "capture_windows_notifications": False,
 }
 
 # Path fragments that mark a process as "installed by a game launcher".

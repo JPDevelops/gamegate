@@ -108,6 +108,10 @@ class FullApiClient(ApiClient):
     def client_settings(self) -> dict | None:
         return self._request("GET", "/settings/client")
 
+    def post_event(self, payload: dict) -> bool:
+        """Ingest a captured event (e.g. a Windows notification) into GameGate."""
+        return self._post_json("/events", payload)
+
     def report_update_status(self, count: int, build: str) -> bool:
         """Tell the server how many updates are pending + this build, so the
         dashboard Settings area can show the same 'Latest version' / 'Update
@@ -620,6 +624,13 @@ def run_tray() -> None:
     threading.Thread(target=detector_loop, daemon=True).start()
     threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
     threading.Thread(target=update_check_loop, daemon=True).start()
+    if config.get("capture_windows_notifications"):
+        # Opt-in: mirror EVERY Windows notification into GameGate (Discord, Slack,
+        # email, ...). Windows-only; the listener no-ops gracefully elsewhere.
+        from windows_notifications import WindowsNotificationListener
+        listener = WindowsNotificationListener(api.post_event)
+        threading.Thread(target=listener.run, args=(stop,), daemon=True).start()
+        log.info("Windows notification capture enabled")
     icon.run()
 
 
