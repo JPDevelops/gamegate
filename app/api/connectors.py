@@ -1,15 +1,13 @@
 """Connector lifecycle — Jules' interactive Connectors tab.
 
-POST /connectors/{name}/disconnect and /connect manage the actual moving
-parts per connector (systemd units, token files, env flags). Lab-grade by
-design: the API host owns its own services (sudo systemctl is passwordless
-for this user), documented in SECURITY_DISPOSITIONS.
+Connect/disconnect just flip a per-connector ENABLED flag in the .env file; the
+connector processes (which run continuously under systemd) read that flag live
+and start/stop their own work. The web API therefore NEVER shells out to `sudo`
+— an app-level compromise can't restart services or gain root (review B2).
 """
 import json
 import logging
 import os
-import subprocess
-import time
 from pathlib import Path
 
 import httpx
@@ -23,59 +21,38 @@ router = APIRouter(dependencies=[Depends(require_api_token)])
 
 ENV_PATH = Path(os.environ.get("GAMEGATE_ENV_FILE", ".env"))
 
-SERVICES = {"discord": "gamegate-discord", "gmail": "gamegate-gmail"}
+# The env flag each connector self-gates on.
+ENABLED_FLAG = {"gmail": "GMAIL_ENABLED", "discord": "GAMEGATE_DISCORD_ENABLED"}
 
 
-_active_cache: dict[str, tuple[float, bool | None]] = {}
-_ACTIVE_TTL = 8.0  # seconds — the dashboard polls /connections every 15s
+def read_env_flag(key: str) -> str | None:
+    """Read a key's CURRENT value from the .env file (not this process' cached
+    os.environ) so the connector processes see a toggle the API just wrote."""
+    if not ENV_PATH.exists():
+        return os.environ.get(key)
+    for line in ENV_PATH.read_text().splitlines():
+        s = line.strip()
+        if s.startswith("#") or "=" not in s:
+            continue
+        k, _, v = s.partition("=")
+        if k.strip() == key:
+            return v.strip().strip("'\"")
+    return os.environ.get(key)
+
+
+def connector_enabled(name: str) -> bool:
+    """Whether a connector is switched on (its live .env flag is 'true')."""
+    key = ENABLED_FLAG.get(name)
+    return bool(key) and (read_env_flag(key) or "").lower() == "true"
 
 
 def service_active(name: str) -> bool | None:
-    """True/False from systemd, None when systemd isn't available (tests/CI).
-    Cached for a few seconds so the dashboard's 15s poll doesn't fork a
-    subprocess per connector on every request (M10)."""
-    unit = SERVICES.get(name)
-    if not unit:
+    """A connector is 'connected' when its enable flag is on — the unit runs
+    continuously and self-gates, so no `systemctl is-active` subprocess is
+    needed (removes the per-poll fork, M10, and the sudo dependency, B2)."""
+    if name not in ENABLED_FLAG:
         return None
-    now = time.monotonic()
-    cached = _active_cache.get(name)
-    if cached and now - cached[0] < _ACTIVE_TTL:
-        return cached[1]
-    try:
-        result = subprocess.run(
-            ["systemctl", "is-active", unit], capture_output=True, text=True,
-            timeout=5, check=False,
-        )
-        value: bool | None = result.stdout.strip() == "active"
-    except (OSError, subprocess.TimeoutExpired):
-        value = None
-    _active_cache[name] = (now, value)
-    return value
-
-
-def _systemctl(action: str, unit: str) -> bool | None:
-    """Run `systemctl <action> <unit>`. Returns True on success, False when it
-    ran but exited non-zero, None when systemd isn't reachable at all (tests/CI).
-    Callers surface False as an error rather than reporting a fake success (M13)."""
-    try:
-        result = subprocess.run(
-            ["sudo", "systemctl", action, unit], timeout=20, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        log.warning("systemctl %s %s could not run: %s", action, unit, exc)
-        return None
-    if result.returncode != 0:
-        log.warning("systemctl %s %s exited %s", action, unit, result.returncode)
-        return False
-    return True
-
-
-def _require_systemctl_ok(action: str, unit: str) -> None:
-    """Raise 502 when systemctl ran and failed; tolerate 'not available'."""
-    if _systemctl(action, unit) is False:
-        raise HTTPException(
-            status_code=502, detail=f"Failed to {action} {unit}; check service logs"
-        )
+    return connector_enabled(name)
 
 
 def _is_active_assignment(line: str, key: str) -> bool:
@@ -147,11 +124,10 @@ def disconnect(name: str) -> dict:
         token = Path(os.environ.get("GMAIL_TOKEN_PATH", "token.json"))
         revoked = _revoke_google_grant(token)  # revoke BEFORE deleting the token
         token.unlink(missing_ok=True)
-        update_env_var("GMAIL_ENABLED", "false")
-        _require_systemctl_ok("stop", SERVICES["gmail"])
+        update_env_var("GMAIL_ENABLED", "false")  # the poller stops on next cycle
         return {"disconnected": "gmail", "grant_revoked": revoked}
     if name == "discord":
-        _require_systemctl_ok("stop", SERVICES["discord"])
+        update_env_var("GAMEGATE_DISCORD_ENABLED", "false")  # bot stops ingesting
         return {"disconnected": "discord"}
     if name == "classifier":
         update_env_var("CLASSIFIER_ENABLED", "false")
@@ -166,11 +142,10 @@ def connect(name: str) -> dict:
         if not token.exists():
             # Authorization needed first — the UI sends the browser there.
             return {"authorize": "/connect/gmail"}
-        update_env_var("GMAIL_ENABLED", "true")
-        _require_systemctl_ok("start", SERVICES["gmail"])
+        update_env_var("GMAIL_ENABLED", "true")  # the running poller picks it up
         return {"connected": "gmail"}
     if name == "discord":
-        _require_systemctl_ok("start", SERVICES["discord"])
+        update_env_var("GAMEGATE_DISCORD_ENABLED", "true")  # bot resumes ingesting
         return {"connected": "discord"}
     if name == "classifier":
         update_env_var("CLASSIFIER_ENABLED", "true")

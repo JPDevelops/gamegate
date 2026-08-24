@@ -83,3 +83,19 @@ connector units run always (systemd-enabled) and poll their `*_ENABLED` flag
 `sudo` entirely and the unit gets `NoNewPrivileges=true` with `ReadWritePaths`
 narrowed to the data dir. Until then it is documented, and the connector units
 already set `NoNewPrivileges=true`.
+
+## B2/B3 sudo removal — code DONE (live-apply pending)
+
+The web API no longer shells out to `sudo systemctl`. Connect/disconnect just
+flip a per-connector `*_ENABLED` flag in `.env`; the connector processes
+(gmail_run, discord_bot) run continuously and read that flag live to start/stop
+their own work, and `service_active()` reports connected-state from the flag (no
+subprocess). The API unit now sets `NoNewPrivileges=true`. Fully tested offline.
+
+**Live-apply is a coordinated step (not auto-deployed):** on the server the
+connector units must run continuously (`systemctl enable --now gamegate-gmail
+gamegate-discord`), the live `.env` must set `GAMEGATE_DISCORD_ENABLED=true` so
+Discord keeps ingesting, the new `deploy/gamegate.service` must be installed
+(daemon-reload + restart), and the passwordless sudoers rule can then be removed.
+Deploying the API alone without these would leave the dashboard toggles flipping
+a flag the old connector code ignores — so this is done with the owner watching.

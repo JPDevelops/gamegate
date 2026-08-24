@@ -11,6 +11,7 @@ import os
 
 import discord
 
+from app.api.connectors import connector_enabled
 from app.integrations.discord_connector import (
     DeliveryPump,
     GameGateApi,
@@ -122,6 +123,11 @@ def build_client() -> discord.Client:
         # The owner's own messages are never ingested (issue #34) — you should
         # not be interrupted by yourself. Commands above still work.
         if owner_id and message.author.id == owner_id:
+            return
+        # Self-gate on the live enable flag (the dashboard's connect/disconnect
+        # toggles it) — so "disconnect" stops ingestion without the API needing
+        # sudo to stop the service (review B2). Commands above still work.
+        if not connector_enabled("discord"):
             return
         payload = normalize_message(
             str(message.id),

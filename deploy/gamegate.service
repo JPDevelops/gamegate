@@ -13,11 +13,9 @@ WorkingDirectory=/home/ubuntu/Project/gamegate
 EnvironmentFile=/home/ubuntu/Project/gamegate/.env
 Environment=GAMEGATE_ENV=production
 UMask=0077
-# Sandboxing (review M13): confine an RCE in the API. Note NoNewPrivileges is
-# intentionally NOT set here because the connectors endpoint shells out to
-# `sudo systemctl`; the proper fix is a polkit rule / tiny privileged helper so
-# this can be locked down too (tracked). ReadWritePaths covers the app dir (for
-# .env's atomic tmp+rename) and the DB directory; everything else is read-only.
+# Sandboxing (review M13, B2). The API no longer shells out to sudo — connectors
+# self-gate on an .env flag — so it can now drop privileges fully.
+NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/home/ubuntu/Project/gamegate /home/ubuntu/Project/gamegate-data

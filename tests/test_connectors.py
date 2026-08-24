@@ -1,16 +1,10 @@
-"""Connector lifecycle endpoints — env/file effects with systemd stubbed."""
+"""Connector lifecycle endpoints — connect/disconnect just flip an .env flag;
+no sudo/systemd involved (review B2)."""
 import os
 
 import pytest
 
 from app.api import connectors as connectors_module
-
-
-@pytest.fixture(autouse=True)
-def no_systemd(monkeypatch):
-    calls = []
-    monkeypatch.setattr(connectors_module, "_systemctl", lambda a, u: calls.append((a, u)))
-    yield calls
 
 
 @pytest.fixture()
@@ -41,7 +35,7 @@ def test_update_env_var_does_not_uncomment_or_leave_tmp(tmp_path, monkeypatch):
         assert oct(env.stat().st_mode)[-3:] == "600"  # secrets file is 0600
 
 
-def test_gmail_disconnect_removes_token_and_flag(client, env_file, tmp_path, monkeypatch, no_systemd):
+def test_gmail_disconnect_removes_token_and_flag(client, env_file, tmp_path, monkeypatch):
     token = tmp_path / "token.json"
     token.write_text("{}")
     monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token))
@@ -50,7 +44,7 @@ def test_gmail_disconnect_removes_token_and_flag(client, env_file, tmp_path, mon
     assert response.status_code == 200
     assert not token.exists()
     assert "GMAIL_ENABLED=false" in env_file.read_text()
-    assert ("stop", "gamegate-gmail") in no_systemd
+    assert connectors_module.connector_enabled("gmail") is False  # poller stops on the flag
 
 
 def test_gmail_connect_without_token_points_to_oauth(client, env_file, tmp_path, monkeypatch):
@@ -59,13 +53,24 @@ def test_gmail_connect_without_token_points_to_oauth(client, env_file, tmp_path,
     assert body == {"authorize": "/connect/gmail"}
 
 
-def test_gmail_connect_with_token_enables_and_starts(client, env_file, tmp_path, monkeypatch, no_systemd):
+def test_gmail_connect_with_token_enables_flag(client, env_file, tmp_path, monkeypatch):
     token = tmp_path / "token.json"
     token.write_text("{}")
     monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token))
     assert client.post("/connectors/gmail/connect").status_code == 200
     assert "GMAIL_ENABLED=true" in env_file.read_text()
-    assert ("start", "gamegate-gmail") in no_systemd
+    assert connectors_module.connector_enabled("gmail") is True
+
+
+def test_discord_connect_disconnect_flips_flag_no_sudo(client, env_file):
+    """B2: connect/disconnect only flip the .env flag — no systemctl/sudo — and
+    service_active reads that flag."""
+    client.post("/connectors/discord/connect")
+    assert connectors_module.connector_enabled("discord") is True
+    assert connectors_module.service_active("discord") is True
+    client.post("/connectors/discord/disconnect")
+    assert connectors_module.connector_enabled("discord") is False
+    assert connectors_module.service_active("discord") is False
 
 
 def test_classifier_toggle_persists_flag(client, env_file):
