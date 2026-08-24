@@ -33,6 +33,13 @@ def test_naive_received_at_is_coerced_and_digest_does_not_500(client):
     assert client.get("/digest").status_code == 200            # no 500
 
 
+def test_unread_bulk_ids_are_capped(client):
+    """The bulk-unread op caps its id list so a caller can't submit an
+    unbounded batch (N5)."""
+    assert client.post("/events/unread", json={"ids": ["x"] * 501}).status_code == 422
+    assert client.post("/events/unread", json={"ids": ["x"] * 10}).status_code == 200
+
+
 def test_post_valid_event_returns_201_with_id(client):
     response = client.post("/events", json=make_event())
     assert response.status_code == 201

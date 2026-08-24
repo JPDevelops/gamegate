@@ -118,8 +118,9 @@ def connections(
         gmail = {"state": "disabled", "detail": "No OAuth client configured"}
 
     discord_ready = bool(os.environ.get("DISCORD_BOT_TOKEN")) and bool(
-        int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0"))
-    )
+        (os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "") or "0").strip().isdigit()
+        and int(os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "0"))
+    )  # guard: a non-numeric guild id must not 500 the dashboard (N9)
     discord_running = service_active("discord")
     if discord_ready and discord_running is not False:
         discord = {"state": "connected", "detail": "Bot in your server, ingesting messages",

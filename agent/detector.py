@@ -200,7 +200,9 @@ def windows_steam_running_app_id() -> int:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
             value, _ = winreg.QueryValueEx(key, "RunningAppID")
             return int(value)
-    except OSError:
+    except (OSError, ImportError, ValueError):
+        # ImportError: winreg is Windows-only (non-Windows dev/CI). ValueError:
+        # a non-int RunningAppID. Either way, "not playing" (N19).
         return 0
 
 

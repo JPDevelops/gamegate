@@ -36,3 +36,25 @@ made consistent; hermetic test env.
 Assorted nitpicks (trailing newlines, a bound-port mutex, keyword word-boundaries,
 etc.) are tracked in the review report at `reviews/dad-simulation-2026-08-24.md`
 and folded into the batches above where cheap.
+
+## Independent review #2 (2026-08-24) — status
+
+**All 3 blockers and all 13 majors fixed**, each with a test that fails on the
+old code where testable: B1 session-close race (was falsely documented-fixed —
+now genuinely atomic + concurrency test + corrected pentest doc), B2 cleartext
+:80 (redirects to HTTPS, live), B3 false claims (dead config removed, README /
+DESKTOP_APP / website corrected), M1 Gmail-connect regression, M2 datetime 500,
+M3 XFF spoof (+ real test), M4 open /docs, M5 token in journald (live), M6
+threading rationale, M7 overlay retry loop + poison guard, M8 dashboard input
+wipe, M9 CSP artwork, M10 Gmail grant revoke, M11 client 401 logging, M12 atomic
+.env write, M13 systemd sandboxing.
+
+**Minors fixed:** N2 (dedup get_settings_service), N5 (cap bulk-unread ids),
+N9 (guard non-numeric guild id), N19 (winreg ImportError on non-Windows).
+
+**Minors intentionally left** (small / by-design / document-only): naive keyword
+substring matching (N14, cheap and deliberate), Discord DM branch reachable only
+in tests (N16/N17), process-name keying (N18), `_pending_states` process-local
+(N6, single-worker), and assorted style nitpicks. None are bugs or security
+issues. Systemd hardening is committed to the units but not yet live-applied
+(needs a tested restart window).
