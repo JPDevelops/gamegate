@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends
+from fastapi import APIRouter, Cookie, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import __version__
@@ -39,6 +39,7 @@ LOGIN_PAGE = """<!doctype html><meta charset="utf-8">
 
 @router.get("/app")
 def dashboard(
+    request: Request,
     key: str = "",
     gamegate_token: Annotated[str | None, Cookie()] = None,
 ) -> HTMLResponse:
@@ -46,11 +47,13 @@ def dashboard(
     if expected and key == expected and gamegate_token != expected:
         # Exchange the one-time link for a cookie and drop the key from the URL.
         response = RedirectResponse("/app", status_code=303)
-        # secure=False deliberately: lab clients still use HTTP (see
-        # docs/SECURITY_DISPOSITIONS.md #26) — the cookie is no more exposed
-        # than the header those clients already send. Flip with full TLS.
+        # Secure when the dashboard is reached over HTTPS (nginx sets
+        # X-Forwarded-Proto); stays unset for local HTTP clients so nothing
+        # breaks in a plain-HTTP lab.
+        over_https = request.headers.get("x-forwarded-proto", "").lower() == "https" \
+            or request.url.scheme == "https"
         response.set_cookie(
-            COOKIE_NAME, expected, httponly=True, secure=False, samesite="lax",
+            COOKIE_NAME, expected, httponly=True, secure=over_https, samesite="lax",
             max_age=60 * 60 * 24 * 90,
         )
         return response

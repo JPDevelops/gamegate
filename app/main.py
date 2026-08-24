@@ -15,6 +15,7 @@ from app.api.gmail_oauth import router as gmail_oauth_router
 from app.api.settings import router as settings_router
 from app.api.status import router as status_router
 from app.config import get_settings
+from app.middleware import AuthRateLimitMiddleware, SecurityHeadersMiddleware
 
 
 @asynccontextmanager
@@ -27,10 +28,14 @@ async def lifespan(app: FastAPI):
         )
     if db_module._database is None:
         db_module.init_database(settings.db_path)
+    from app.middleware import reset_rate_limits
+    reset_rate_limits()
     yield
 
 
 app = FastAPI(title="GameGate", version=__version__, lifespan=lifespan)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AuthRateLimitMiddleware)
 app.include_router(status_router)
 app.include_router(events_router)
 app.include_router(digest_router)
