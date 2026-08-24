@@ -11,7 +11,6 @@ from typing import Protocol
 
 log = logging.getLogger("gamegate.gmail")
 
-DEFAULT_VIP_SENDERS: tuple[str, ...] = ()
 ORDER_PROBLEM_KEYWORDS = (
     "order", "refund", "not arrived", "delayed", "missing", "chargeback", "complaint",
 )
@@ -25,17 +24,12 @@ class GmailClient(Protocol):
         ...
 
 
-def vip_senders() -> tuple[str, ...]:
-    raw = os.environ.get("GMAIL_VIP_SENDERS", "")
-    return tuple(s.strip().lower() for s in raw.split(",") if s.strip()) or DEFAULT_VIP_SENDERS
-
-
-def classify_email(sender: str, subject: str, snippet: str, vips: tuple[str, ...]) -> str:
-    """The runbook's deterministic first pass — no AI involved."""
+def classify_email(sender: str, subject: str, snippet: str) -> str:
+    """The connector's deterministic first pass — no AI, no VIP list. VIP
+    senders are applied server-side from the DB settings (single source of
+    truth), so the connector never carries its own VIP list (M14)."""
     sender_lower = sender.lower()
     text = f"{subject} {snippet}".lower()
-    if any(vip and vip in sender_lower for vip in vips):
-        return "urgent"
     if any(keyword in text for keyword in ORDER_PROBLEM_KEYWORDS):
         return "actionable"
     if any(marker in sender_lower or marker in text for marker in NEWSLETTER_MARKERS):
@@ -43,9 +37,9 @@ def classify_email(sender: str, subject: str, snippet: str, vips: tuple[str, ...
     return "informational"
 
 
-def normalize_email(message: dict, vips: tuple[str, ...]) -> dict:
+def normalize_email(message: dict) -> dict:
     priority = classify_email(
-        message["sender"], message["subject"], message.get("snippet", ""), vips
+        message["sender"], message["subject"], message.get("snippet", "")
     )
     return {
         "source": "gmail",
@@ -61,10 +55,9 @@ def normalize_email(message: dict, vips: tuple[str, ...]) -> dict:
 
 
 class GmailPoller:
-    def __init__(self, gmail: GmailClient, api, vips: tuple[str, ...] | None = None):
+    def __init__(self, gmail: GmailClient, api):
         self.gmail = gmail
         self.api = api
-        self.vips = vip_senders() if vips is None else vips
 
     def poll_once(self) -> int:
         """Fetch → normalize → ingest. Returns how many posts succeeded.
@@ -76,7 +69,7 @@ class GmailPoller:
             return 0
         ingested = 0
         for message in messages:
-            if self.api.post_event(normalize_email(message, self.vips)):
+            if self.api.post_event(normalize_email(message)):
                 ingested += 1
         return ingested
 

@@ -37,6 +37,9 @@ class IngestService:
         self.user_settings = SettingsService(db)
 
     def ingest(self, incoming: EventIn) -> tuple[Event, bool, Decision]:
+        # Work on a copy — priority upgrades below must not mutate the caller's
+        # object (N40).
+        incoming = incoming.model_copy()
         prefs = self.user_settings.get_all()
 
         # VIP senders and urgent keywords upgrade priority (never downgrade) —

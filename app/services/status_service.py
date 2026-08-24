@@ -46,36 +46,53 @@ class StatusService:
             previous.state == AvailabilityState.GAMING
             and update.state != AvailabilityState.GAMING
         )
+        # Switching games without leaving GAMING: close the old session (and its
+        # digest) and open a new one, so each game gets its own recap (M7).
+        switching_game = (
+            update.state == AvailabilityState.GAMING
+            and previous.state == AvailabilityState.GAMING
+            and update.application != previous.application
+        )
 
         if previous.state != update.state:
             log.info("State transition: %s -> %s", previous.state.value, update.state.value)
 
         closed_session = None
-        if entering_game:
-            opened = self.session_repo.open(
-                update.application,
-                update.started_at.isoformat() if update.started_at else None,
-                update.app_id,
-            )
-            if opened:
-                log.info("Gaming session opened (%s)", update.application)
-            else:
-                # open() returns None when a session is already open; don't
-                # swallow it silently (M8) — a stuck-open session would then
-                # record nothing for every later game.
-                log.warning(
-                    "Gaming session NOT opened for %s: a session is already open",
-                    update.application,
-                )
+        if switching_game:
+            # End the previous game's session (and its recap), then start fresh.
+            closed_session = self._close_session()
+            self._open_session(update)
+        elif entering_game:
+            self._open_session(update)
         elif leaving_game:
-            closed_session = self.session_repo.close_current()
-            if closed_session:
-                log.info(
-                    "Gaming session closed after %ss", closed_session["duration_seconds"]
-                )
-            if closed_session and self.event_repo and self.digest_repo:
-                self._create_digest(closed_session)
+            closed_session = self._close_session()
         return result, closed_session
+
+    def _open_session(self, update: StatusUpdate) -> None:
+        opened = self.session_repo.open(
+            update.application,
+            update.started_at.isoformat() if update.started_at else None,
+            update.app_id,
+        )
+        if opened:
+            log.info("Gaming session opened (%s)", update.application)
+        else:
+            # open() returns None when a session is already open; don't swallow
+            # it silently (M8) — a stuck-open session would then record nothing.
+            log.warning(
+                "Gaming session NOT opened for %s: a session is already open",
+                update.application,
+            )
+
+    def _close_session(self) -> dict | None:
+        closed_session = self.session_repo.close_current()
+        if closed_session:
+            log.info(
+                "Gaming session closed after %ss", closed_session["duration_seconds"]
+            )
+            if self.event_repo and self.digest_repo:
+                self._create_digest(closed_session)
+        return closed_session
 
     def _create_digest(self, session: dict) -> str:
         """Exactly one digest per ended session: queued events are consumed

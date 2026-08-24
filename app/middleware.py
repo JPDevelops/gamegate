@@ -110,6 +110,22 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
             if len(fails) >= self.max_failures:
                 self._blocked[ip] = now + self.cooldown_s
                 fails.clear()
+            self._sweep(now)
         elif response.status_code < 400:
             self._failures.pop(ip, None)  # success clears the counter
         return response
+
+    def _sweep(self, now: float) -> None:
+        """Bound memory: drop IPs whose failure window has fully elapsed and
+        blocks that have expired. Without this, any IP that fails once and never
+        succeeds would leave a deque in memory forever (M12). Cheap — only runs
+        on a 401 and only walks the maps when they grow past a threshold."""
+        if len(self._failures) > 1024:
+            for key in [
+                k for k, d in self._failures.items()
+                if not d or now - d[-1] > self.window_s
+            ]:
+                self._failures.pop(key, None)
+        if len(self._blocked) > 1024:
+            for key in [k for k, until in self._blocked.items() if until < now]:
+                self._blocked.pop(key, None)

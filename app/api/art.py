@@ -64,7 +64,8 @@ def game_art(game: str) -> RedirectResponse:
             raise HTTPException(status_code=404, detail="no art")
         return RedirectResponse(row["url"], status_code=307)
 
-    url = lookup_art(game, _client(), api_key)
+    with _client() as client:  # context-managed so the connection is closed (N31)
+        url = lookup_art(game, client, api_key)
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO art_cache (game, url, fetched_at) VALUES (?, ?, ?)",

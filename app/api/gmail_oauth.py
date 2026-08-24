@@ -70,6 +70,7 @@ def exchange_code(
     """Exchange the authorization code for tokens. Raises HTTPException on
     any provider failure — the browser sees a clear error, nothing is stored."""
     client = http or httpx.Client(timeout=15)
+    owns_client = http is None  # close only the client we created (N31)
     try:
         response = client.post(
             TOKEN_URL,
@@ -86,6 +87,9 @@ def exchange_code(
     except httpx.HTTPError as exc:
         log.warning("Code exchange failed: %s", exc)
         raise HTTPException(status_code=502, detail="Google token exchange failed") from exc
+    finally:
+        if owns_client:
+            client.close()
 
 
 def write_token_file(tokens: dict, client_id: str, client_secret: str) -> str:

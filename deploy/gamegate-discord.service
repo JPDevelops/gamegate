@@ -9,11 +9,11 @@ Wants=gamegate.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/gamegate
-EnvironmentFile=/home/ubuntu/gamegate/.env
+WorkingDirectory=/home/ubuntu/Project/gamegate
+EnvironmentFile=/home/ubuntu/Project/gamegate/.env
 Environment=GAMEGATE_ENV=production
 UMask=0077
-ExecStart=/home/ubuntu/gamegate/.venv/bin/python -m app.integrations.discord_bot
+ExecStart=/home/ubuntu/Project/gamegate/.venv/bin/python -m app.integrations.discord_bot
 Restart=on-failure
 RestartSec=5
 
