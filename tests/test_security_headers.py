@@ -56,6 +56,21 @@ def test_rate_limit_uses_last_xff_hop_not_spoofable(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_authenticated_responses_are_not_cacheable(client):
+    """Responses to credentialed requests carry personal data (and the token in
+    /app?key=) — they must be Cache-Control: no-store so shared/disk caches
+    don't retain them. Public pages stay cacheable."""
+    public = client.get("/health")
+    assert public.headers.get("Cache-Control") != "no-store"
+    for creds in (
+        {"headers": {"X-GameGate-Token": "x"}},
+        {"cookies": {"gamegate_token": "x"}},
+        {"params": {"key": "x"}},
+    ):
+        r = client.get("/health", **creds)
+        assert r.headers.get("Cache-Control") == "no-store"
+
+
 def test_deeply_nested_json_is_400_not_500(client):
     nested = "{\"a\":" * 3000 + "1" + "}" * 3000
     r = client.post("/events", data=nested, headers={"Content-Type": "application/json"})
