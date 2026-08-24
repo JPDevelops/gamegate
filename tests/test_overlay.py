@@ -11,6 +11,38 @@ from overlay import (
 from tray_app import pick_notifier, windows_toast
 
 
+def test_overlay_rendering_is_serialized_across_threads():
+    """MAJOR: only one Tk root may be alive at a time. show_overlay (pump thread)
+    and show_update_prompt (update-check thread) must never run their Tk work
+    concurrently. Patch the impls to detect overlap; fails on the pre-lock code."""
+    import threading
+    import time
+
+    import overlay
+
+    active = {"n": 0, "max": 0}
+    guard = threading.Lock()
+
+    def fake_impl(*_a, **_k):
+        with guard:
+            active["n"] += 1
+            active["max"] = max(active["max"], active["n"])
+        time.sleep(0.02)          # widen the overlap window
+        with guard:
+            active["n"] -= 1
+        return True
+
+    overlay._show_overlay = fake_impl
+    overlay._show_update_prompt = fake_impl
+    threads = [threading.Thread(target=lambda: overlay.show_overlay("t", "b")) for _ in range(5)]
+    threads += [threading.Thread(target=lambda: overlay.show_update_prompt(3)) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert active["max"] == 1, f"two Tk roots were alive at once ({active['max']})"
+
+
 def test_geometry_is_top_right():
     width, height, x, y = compute_geometry(1920, 1080, height=120)
     assert height == 120
