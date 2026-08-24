@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import httpx
@@ -25,18 +26,31 @@ ENV_PATH = Path(os.environ.get("GAMEGATE_ENV_FILE", ".env"))
 SERVICES = {"discord": "gamegate-discord", "gmail": "gamegate-gmail"}
 
 
+_active_cache: dict[str, tuple[float, bool | None]] = {}
+_ACTIVE_TTL = 8.0  # seconds — the dashboard polls /connections every 15s
+
+
 def service_active(name: str) -> bool | None:
-    """True/False from systemd, None when systemd isn't available (tests/CI)."""
+    """True/False from systemd, None when systemd isn't available (tests/CI).
+    Cached for a few seconds so the dashboard's 15s poll doesn't fork a
+    subprocess per connector on every request (M10)."""
     unit = SERVICES.get(name)
     if not unit:
         return None
+    now = time.monotonic()
+    cached = _active_cache.get(name)
+    if cached and now - cached[0] < _ACTIVE_TTL:
+        return cached[1]
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5, check=False
+            ["systemctl", "is-active", unit], capture_output=True, text=True,
+            timeout=5, check=False,
         )
-        return result.stdout.strip() == "active"
+        value: bool | None = result.stdout.strip() == "active"
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        value = None
+    _active_cache[name] = (now, value)
+    return value
 
 
 def _systemctl(action: str, unit: str) -> bool | None:
@@ -97,6 +111,7 @@ def update_env_var(key: str, value: str) -> None:
         lines.append(new_line)
     tmp = ENV_PATH.with_name(ENV_PATH.name + ".tmp")
     tmp.write_text("\n".join(lines) + "\n")
+    os.chmod(tmp, 0o600)  # explicit 0600 — the secrets file must not depend on umask (M7)
     os.replace(tmp, ENV_PATH)  # atomic swap; never a truncated .env
 
 

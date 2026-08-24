@@ -11,11 +11,13 @@
 7. **AI with a kill switch** (60s): show a classified event; then set an invalid OPENAI_API_KEY, classify again — deterministic fallback answers, service unbothered. "The LLM is an enhancement, never a dependency."
 8. **Prove the tests** (20s): `pytest -q` → full offline suite passing (160+).
 
-Inject a test event manually:
+Inject a test event manually. **`received_at` must be NOW** — a fixed past
+timestamp is treated as stale (older than the 10-minute freshness window) and
+gets queued instead of breaking through, so the overlay never pops:
 ```bash
-curl -X POST localhost:8000/events -H "Content-Type: application/json" \
-  -H "X-GameGate-Token: $TOKEN" -d '{
-  "source":"system","external_id":"demo-1","sender":"demo",
-  "title":"Urgent: call your mother","content":"now",
-  "received_at":"2026-08-23T12:00:00Z","priority":"urgent"}'
+curl -X POST https://<your-host>/events -H "Content-Type: application/json" \
+  -H "X-GameGate-Token: $TOKEN" -d "{
+  \"source\":\"system\",\"external_id\":\"demo-$(date +%s)\",\"sender\":\"demo\",
+  \"title\":\"Urgent: call your mother\",\"content\":\"now\",
+  \"received_at\":\"$(date -u +%FT%TZ)\",\"priority\":\"urgent\"}"
 ```

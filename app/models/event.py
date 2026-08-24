@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from uuid import uuid4
 
@@ -21,10 +21,10 @@ class EventPriority(str, Enum):
 
 class EventIn(BaseModel):
     source: EventSource
-    external_id: str
-    sender: str
-    title: str
-    content: str = ""
+    external_id: str = Field(max_length=512)
+    sender: str = Field(max_length=512)
+    title: str = Field(max_length=1024)
+    content: str = Field(default="", max_length=8192)
     received_at: datetime
     priority: EventPriority
     requires_action: bool = False
@@ -33,10 +33,23 @@ class EventIn(BaseModel):
     @field_validator("received_at")
     @classmethod
     def _tz_aware(cls, v: datetime) -> datetime:
-        """Coerce naive timestamps to UTC at the boundary so downstream sorting
-        never mixes naive and aware datetimes (which raises TypeError and 500s
-        the digest). Normalizes once, on store, instead of ad hoc everywhere."""
-        return v.replace(tzinfo=UTC) if v.tzinfo is None else v
+        """Coerce naive timestamps to UTC (so downstream sorting never mixes
+        naive and aware datetimes and 500s the digest) and clamp a future
+        timestamp to now — a future date would never be 'stale' and would defeat
+        the freshness gate, turning every held message into an interruption (M12)."""
+        v = v.replace(tzinfo=UTC) if v.tzinfo is None else v
+        now = datetime.now(UTC)
+        return now if v > now + timedelta(minutes=5) else v
+
+    @field_validator("metadata")
+    @classmethod
+    def _bounded_metadata(cls, v: dict) -> dict:
+        """Cap the serialized metadata so an unbounded blob can't be stored (M11)."""
+        import json
+
+        if len(json.dumps(v)) > 8192:
+            raise ValueError("metadata too large (max 8KB serialized)")
+        return v
 
 
 class Event(EventIn):

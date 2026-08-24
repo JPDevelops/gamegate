@@ -56,14 +56,28 @@ def build_client() -> discord.Client:
             pump_started["done"] = True
             client.loop.create_task(pump_loop())
 
-    async def pump_loop():
-        channel = client.get_channel(delivery_channel_id)
-        pump = DeliveryPump(api, lambda text: _send_sync(channel, text))
-        while True:
+    async def _resolve_channel():
+        # Resolve inside the loop — the channel may not be cached when on_ready
+        # fires, and the bot could be re-added later. Fall back to a fetch, and
+        # log loudly instead of failing silently forever (M8).
+        ch = client.get_channel(delivery_channel_id)
+        if ch is None:
             try:
-                await asyncio.to_thread(pump.run_once)
+                ch = await client.fetch_channel(delivery_channel_id)
             except Exception:
-                log.exception("Delivery pump cycle failed; continuing")
+                log.error("Discord delivery channel %s not reachable; will retry",
+                          delivery_channel_id)
+        return ch
+
+    async def pump_loop():
+        while True:
+            channel = await _resolve_channel()
+            if channel is not None:
+                pump = DeliveryPump(api, lambda text, ch=channel: _send_sync(ch, text))
+                try:
+                    await asyncio.to_thread(pump.run_once)
+                except Exception:
+                    log.exception("Delivery pump cycle failed; continuing")
             await asyncio.sleep(PUMP_INTERVAL_SECONDS)
 
     def _send_sync(channel, text: str) -> bool:

@@ -19,7 +19,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller psutil pystray pillow pywebview
+          pip install pyinstaller psutil pystray pillow pywebview winotify
         working-directory: agent
       - name: Stamp build
         shell: pwsh
