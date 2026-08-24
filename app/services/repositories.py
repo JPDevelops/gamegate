@@ -82,10 +82,13 @@ class EventRepository:
         ).fetchall()
         return [self._to_event(r) for r in rows]
 
-    def undelivered(self) -> list[Event]:
+    def undelivered(self, limit: int = 1000) -> list[Event]:
+        # Cap the batch so one digest can't pull an unbounded backlog (e.g. a
+        # weekend of 'away' with thousands of queued mails). The remainder stays
+        # delivered=0 and rolls into the next digest (review "bound the unbounded").
         rows = self.db.connection().execute(
             "SELECT * FROM events WHERE delivered = 0 AND priority != 'ignore'"
-            " ORDER BY created_at ASC, rowid ASC"
+            " ORDER BY created_at ASC, rowid ASC LIMIT ?", (limit,)
         ).fetchall()
         return [self._to_event(r) for r in rows]
 

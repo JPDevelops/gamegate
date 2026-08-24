@@ -7,10 +7,11 @@ is asked at most once per game name.
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 
 from app.db import get_database
@@ -63,7 +64,9 @@ def lookup_art(game: str, client: httpx.Client, api_key: str) -> str:
 
 
 @router.get("/art")
-def game_art(game: str) -> RedirectResponse:
+def game_art(game: Annotated[str, Query(max_length=128)] = "") -> RedirectResponse:
+    # Cap the game name (also the art_cache primary key) so a client can't grow
+    # the cache table with unbounded keys (review "bound the unbounded").
     api_key = os.environ.get("STEAMGRIDDB_API_KEY", "")
     if not game or not api_key:
         raise HTTPException(status_code=404, detail="no art")

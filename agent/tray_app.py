@@ -130,24 +130,38 @@ class ToastPump:
         self._settings_version = -1
         self.sound = True
         self.duration_s = 8
-        self._fail_counts: dict[str, int] = {}  # id -> consecutive show failures
+        self._fail_counts: dict[str, int] = {}  # id -> consecutive failures
+        self._shown: set[str] = set()            # rendered once; never re-render
+        self._given_up: set[str] = set()         # retries exhausted; fully ignore
 
     def _show_or_drop(self, item_id: str, title: str, body: str, ack) -> bool:
-        """Show an item and ack on success. If display keeps failing, ack it
-        anyway after MAX_SHOW_ATTEMPTS so one poison item can't block the queue
-        forever (M7) — better to drop one card than to retry it every 10s."""
-        if self.show(title, body, duration_s=self.duration_s, sound=self.sound):
-            if ack(item_id):
-                self._fail_counts.pop(item_id, None)
-                return True
+        """Render an item AT MOST ONCE, then ack. If display OR ack keeps
+        failing, give up after MAX_SHOW_ATTEMPTS so a poison item (e.g. an ack
+        that 401s after a token rotation) can't re-render the same card every
+        10s forever (review B1). A shown-but-unacked item is retried only at the
+        ack layer — never re-displayed."""
+        if item_id in self._given_up:
             return False
+        if item_id not in self._shown:
+            if not self.show(title, body, duration_s=self.duration_s, sound=self.sound):
+                self._bump_fail(item_id)          # display failed
+                return False
+            self._shown.add(item_id)              # rendered exactly once
+        if ack(item_id):
+            self._shown.discard(item_id)
+            self._fail_counts.pop(item_id, None)
+            return True
+        self._bump_fail(item_id)                  # ack failed — count it too (B1)
+        return False
+
+    def _bump_fail(self, item_id: str) -> None:
         self._fail_counts[item_id] = self._fail_counts.get(item_id, 0) + 1
         if self._fail_counts[item_id] >= self.MAX_SHOW_ATTEMPTS:
-            log.warning("Dropping notification %s after %d failed displays",
-                        item_id, self._fail_counts[item_id])
-            ack(item_id)
-            self._fail_counts.pop(item_id, None)
-        return False
+            log.warning(
+                "Giving up on notification %s after %d attempts; it stays pending "
+                "server-side but won't be re-shown", item_id, self._fail_counts[item_id]
+            )
+            self._given_up.add(item_id)
 
     def _apply_settings(self) -> None:
         settings = self.api.client_settings()
@@ -197,12 +211,22 @@ class DndController:
 
 
 def windows_toast(title: str, body: str, duration_s: int = 8, sound: bool = True) -> bool:
-    """Native Windows toast (fallback notifier). Returns False on any
+    """Native Windows toast (fallback notifier). Honors the user's duration and
+    sound settings — winotify exposes both (review M2). Returns False on any
     failure so the pump retries instead of acking."""
     try:
-        from winotify import Notification
+        from winotify import Notification, audio
 
-        Notification(app_id="GameGate", title=title, msg=body or " ").show()
+        # winotify duration is coarse ("short" ~5s / "long" ~25s); map the
+        # user's seconds onto it rather than ignoring the setting.
+        note = Notification(
+            app_id="GameGate", title=title, msg=body or " ",
+            duration="long" if duration_s > 8 else "short",
+        )
+        note.set_audio(audio.Default, loop=False) if sound else note.set_audio(
+            audio.Silent, loop=False
+        )
+        note.show()
         return True
     except Exception:
         log.exception("Toast failed")
