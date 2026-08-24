@@ -199,10 +199,17 @@ class SessionRepository:
         duration = max(0, int((ended - started).total_seconds()))
         conn = self.db.connection()
         with conn:
-            conn.execute(
-                "UPDATE sessions SET ended_at = ?, duration_seconds = ? WHERE id = ?",
+            # Gate the close on the session still being open (ended_at IS NULL)
+            # and check rowcount: with two concurrent "available" transitions,
+            # exactly one UPDATE wins the row and returns a dict; the loser gets
+            # rowcount 0 and returns None, so only one digest is ever built.
+            cur = conn.execute(
+                "UPDATE sessions SET ended_at = ?, duration_seconds = ?"
+                " WHERE id = ? AND ended_at IS NULL",
                 (ended.isoformat(), duration, row["id"]),
             )
+        if cur.rowcount == 0:
+            return None
         return {
             "id": row["id"], "application": row["application"],
             "app_id": row["app_id"],  # column guaranteed by the init migration

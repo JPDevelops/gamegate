@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EventSource(str, Enum):
@@ -29,6 +29,14 @@ class EventIn(BaseModel):
     priority: EventPriority
     requires_action: bool = False
     metadata: dict = Field(default_factory=dict)
+
+    @field_validator("received_at")
+    @classmethod
+    def _tz_aware(cls, v: datetime) -> datetime:
+        """Coerce naive timestamps to UTC at the boundary so downstream sorting
+        never mixes naive and aware datetimes (which raises TypeError and 500s
+        the digest). Normalizes once, on store, instead of ad hoc everywhere."""
+        return v.replace(tzinfo=UTC) if v.tzinfo is None else v
 
 
 class Event(EventIn):

@@ -13,7 +13,10 @@ WorkingDirectory=/home/ubuntu/Project/gamegate
 EnvironmentFile=/home/ubuntu/Project/gamegate/.env
 Environment=GAMEGATE_ENV=production
 UMask=0077
-ExecStart=/home/ubuntu/Project/gamegate/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+# --no-access-log: uvicorn's default access log writes the full request line
+# (including /app?key=<token>) to journald in cleartext. nginx logs are already
+# scrubbed; this closes the second copy (review M5).
+ExecStart=/home/ubuntu/Project/gamegate/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 Restart=on-failure
 RestartSec=3
 

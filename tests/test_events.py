@@ -16,6 +16,23 @@ def make_event(**overrides):
     return event
 
 
+def test_naive_received_at_is_coerced_and_digest_does_not_500(client):
+    """A naive received_at is normalized to UTC at the boundary, so mixing it
+    with aware timestamps of the same priority never crashes digest sorting
+    with a naive/aware TypeError -> 500 (M2)."""
+    client.post("/status", json={"state": "gaming", "application": "g.exe"})
+    # same priority, one NAIVE timestamp, one AWARE — these get sorted together
+    client.post("/events", json=make_event(
+        external_id="naive-1", priority="informational", requires_action=False,
+        received_at="2020-01-01T00:00:00"))            # naive
+    client.post("/events", json=make_event(
+        external_id="aware-1", priority="informational", requires_action=False,
+        received_at="2020-01-01T00:00:01+00:00"))      # aware
+    end = client.post("/status", json={"state": "available"})  # builds the digest
+    assert end.status_code == 200
+    assert client.get("/digest").status_code == 200            # no 500
+
+
 def test_post_valid_event_returns_201_with_id(client):
     response = client.post("/events", json=make_event())
     assert response.status_code == 201

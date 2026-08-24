@@ -14,7 +14,11 @@ from starlette.responses import JSONResponse, Response
 
 CSP = (
     "default-src 'self'; "
-    "img-src 'self' https://cdn.cloudflare.steamstatic.com data:; "
+    # /art 307-redirects to the SteamGridDB CDN; browsers apply img-src to the
+    # redirect target, so the CDN host must be allowed or the artwork is blocked
+    # by our own policy (M9).
+    "img-src 'self' https://cdn.cloudflare.steamstatic.com "
+    "https://cdn2.steamgriddb.com https://cdn.steamgriddb.com data:; "
     "style-src 'self' 'unsafe-inline'; "        # dashboard uses inline styles
     "script-src 'self' 'unsafe-inline'; "        # and inline handlers
     "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
@@ -59,6 +63,9 @@ def _is_authenticated(request: Request) -> bool:
     )
 
 
+# Peers whose X-Forwarded-For we trust — only our own loopback reverse proxy.
+_TRUSTED_PROXIES = {"127.0.0.1", "::1"}
+
 _failures: dict[str, deque] = defaultdict(deque)
 _blocked: dict[str, float] = {}
 
@@ -84,16 +91,19 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         return time.monotonic()
 
     def _client(self, request: Request) -> str:
-        # Trust only the LAST X-Forwarded-For hop. Our nginx REPLACES the header
-        # with $remote_addr (proxy_set_header X-Forwarded-For $remote_addr), so
-        # in normal operation there is exactly one hop; taking the last entry is
-        # defensive against any upstream that instead appends — the
-        # client-supplied left entries would be attacker-controlled (spoofing
-        # them bypassed the limiter and could frame other IPs).
-        fwd = request.headers.get("x-forwarded-for", "")
-        if fwd:
-            return fwd.split(",")[-1].strip()
-        return request.client.host if request.client else "unknown"
+        # Only trust X-Forwarded-For when the request actually came from our
+        # local reverse proxy (peer == 127.0.0.1/::1). Otherwise a client
+        # reaching the app directly could send a single-entry XFF to mint a
+        # fresh identity per request (bypassing the limiter) or spoof a victim's
+        # IP to lock them out (M3). Direct callers are keyed by their real peer.
+        peer = request.client.host if request.client else "unknown"
+        if peer in _TRUSTED_PROXIES:
+            fwd = request.headers.get("x-forwarded-for", "")
+            if fwd:
+                # nginx REPLACES XFF with $remote_addr (one hop); last entry is
+                # the real client even if some upstream appended.
+                return fwd.split(",")[-1].strip()
+        return peer
 
     async def dispatch(self, request: Request, call_next):
         ip = self._client(request)

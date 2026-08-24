@@ -39,7 +39,19 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="GameGate", version=__version__, lifespan=lifespan)
+# Interactive docs (/docs, /redoc, /openapi.json) are open by default and would
+# hand an unauthenticated caller the full endpoint inventory. Enable them only
+# in development; disable in production so "only /health is open" is actually
+# true (M4).
+_docs_enabled = get_settings().env != "production"
+app = FastAPI(
+    title="GameGate",
+    version=__version__,
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 # Order matters: Starlette makes the LAST-added middleware outermost, so add
 # the rate limiter FIRST and the header middleware LAST. That way the header
 # middleware wraps everything — including the rate limiter's early 429 — so
