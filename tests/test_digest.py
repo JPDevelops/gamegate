@@ -80,6 +80,22 @@ def test_digest_is_deterministic(client):
     titles = [item["title"] for item in latest["items"]]
     assert titles == ["event-c", "event-a"]
 
+    # Actually prove determinism (the test name's claim): the pure builder called
+    # twice on the same events yields byte-identical output — not just once.
+    import json
+
+    from app.models.event import Event
+    from app.services.digest_service import build_digest
+
+    events = [
+        Event(source="gmail", external_id=f"d{i}", sender="s", title=f"t{i}",
+              received_at=f"2026-08-24T00:00:0{i}+00:00", priority=p)
+        for i, p in enumerate(["urgent", "actionable", "informational"])
+    ]
+    first = build_digest({"id": "x"}, events)
+    second = build_digest({"id": "x"}, events)
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
 
 def test_stale_events_never_interrupt(client):
     """Initial-sync flood (live bug, 2026-08-23): old messages queue for the

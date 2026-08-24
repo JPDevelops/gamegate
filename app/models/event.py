@@ -48,9 +48,21 @@ class EventIn(BaseModel):
     @field_validator("metadata")
     @classmethod
     def _bounded_metadata(cls, v: dict) -> dict:
-        """Cap the serialized metadata so an unbounded blob can't be stored (M11)."""
+        """Bound metadata: cap nesting depth first (so a pathologically nested
+        blob can't burn CPU in json.dumps before the size check — review MINOR),
+        then cap the serialized size."""
         import json
 
+        def _depth(obj, level=0):
+            if level > 32:
+                raise ValueError("metadata nested too deeply (max 32 levels)")
+            if isinstance(obj, dict):
+                return max((_depth(x, level + 1) for x in obj.values()), default=level)
+            if isinstance(obj, list):
+                return max((_depth(x, level + 1) for x in obj), default=level)
+            return level
+
+        _depth(v)
         if len(json.dumps(v)) > 8192:
             raise ValueError("metadata too large (max 8KB serialized)")
         return v
