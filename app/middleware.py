@@ -124,8 +124,10 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                 self._blocked[ip] = now + self.cooldown_s
                 fails.clear()
             self._sweep(now)
-        elif response.status_code < 400:
-            self._failures.pop(ip, None)  # success clears the counter
+        # NOTE: failures are NOT cleared on a successful response. They expire on
+        # their own after window_s. Clearing on any 2xx let an attacker reset the
+        # counter with an unauthenticated GET /health between guesses, defeating
+        # the throttle entirely (review M1).
         return response
 
     def _sweep(self, now: float) -> None:

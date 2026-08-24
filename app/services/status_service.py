@@ -5,6 +5,7 @@ digest hooks into the closed session (routing engine milestone).
 """
 import json
 import logging
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.models.status import AvailabilityState, StatusResponse, StatusUpdate
@@ -79,37 +80,49 @@ class StatusService:
             )
 
     def _close_session(self) -> dict | None:
-        closed_session = self.session_repo.close_current()
-        if closed_session:
-            log.info(
-                "Gaming session closed after %ss", closed_session["duration_seconds"]
-            )
-            if self.event_repo and self.digest_repo:
-                self._create_digest(closed_session)
-        return closed_session
-
-    def _create_digest(self, session: dict) -> str:
-        """One digest per ended session, created atomically: the digest INSERT
-        and the mark-consumed UPDATEs happen in a single transaction, so a crash
-        can't leave a digest whose events are still queued (and thus land in a
-        second recap). Idempotent — if a digest already exists for the session,
-        this is a no-op (review M2)."""
-        queued = self.event_repo.undelivered()
-        digest = build_digest(session, queued)
+        """Close the current gaming session AND build its recap AND consume its
+        events in ONE database transaction (review B2). A crash anywhere rolls
+        the whole thing back — the session stays open and the next status poll
+        reconciles and retries — so you can never end up with a closed session
+        that has no recap and orphaned queued events. The close is rowcount-
+        gated, so exactly one concurrent caller wins."""
+        conn = self.session_repo.db.connection()
+        row = self.session_repo.current()
+        if row is None:
+            return None
+        ended = datetime.now(UTC)
+        started = datetime.fromisoformat(row["started_at"])
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
+        duration = max(0, int((ended - started).total_seconds()))
+        session = {
+            "id": row["id"], "application": row["application"], "app_id": row["app_id"],
+            "started_at": row["started_at"], "ended_at": ended.isoformat(),
+            "duration_seconds": duration,
+        }
+        build = self.event_repo is not None and self.digest_repo is not None
+        # Read the queued events and format the recap BEFORE the transaction
+        # (pure work, no writes); the transaction re-marks these exact ids.
+        queued = self.event_repo.undelivered() if build else []
+        digest = build_digest(session, queued) if build else None
         digest_id = uuid4().hex
-        conn = self.digest_repo.db.connection()
-        with conn:  # single unit of work
-            if conn.execute(
-                "SELECT 1 FROM digests WHERE session_id = ?", (session["id"],)
-            ).fetchone():
-                return ""  # already built for this session
-            conn.execute(
-                "INSERT INTO digests (id, session_id, created_at, body)"
-                " VALUES (?, ?, ?, ?)",
-                (digest_id, session["id"], _now(), json.dumps(digest)),
+        with conn:  # one unit of work: close + digest + consume
+            cur = conn.execute(
+                "UPDATE sessions SET ended_at = ?, duration_seconds = ?"
+                " WHERE id = ? AND ended_at IS NULL",
+                (session["ended_at"], duration, row["id"]),
             )
-            conn.executemany(
-                "UPDATE events SET delivered = 1, digest_id = ? WHERE id = ?",
-                [(digest_id, e.id) for e in queued],
-            )
-        return digest_id
+            if cur.rowcount == 0:
+                return None  # lost the close race — nothing else is written
+            if build:
+                conn.execute(
+                    "INSERT INTO digests (id, session_id, created_at, body)"
+                    " VALUES (?, ?, ?, ?)",
+                    (digest_id, session["id"], _now(), json.dumps(digest)),
+                )
+                conn.executemany(
+                    "UPDATE events SET delivered = 1, digest_id = ? WHERE id = ?",
+                    [(digest_id, e.id) for e in queued],
+                )
+        log.info("Gaming session closed after %ss", duration)
+        return session

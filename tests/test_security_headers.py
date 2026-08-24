@@ -55,6 +55,31 @@ def test_xff_only_trusted_from_local_proxy():
     assert mw._client(req("203.0.113.9", "9.9.9.9")) == "203.0.113.9"
 
 
+def test_rate_limit_not_reset_by_unauthenticated_success(tmp_path, monkeypatch):
+    """M1: interleaving a successful GET /health between bad token guesses must
+    NOT reset the failure counter — otherwise the throttle is trivially bypassed.
+    Fails on the old 'clear on any 2xx' code."""
+    from fastapi.testclient import TestClient
+
+    from app import db as db_module
+    from app.config import get_settings
+    from app.main import app
+
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "secret")
+    get_settings.cache_clear()
+    db_module.init_database(str(tmp_path / "t.db"))
+    with TestClient(app) as c:
+        got429 = False
+        for _ in range(14):
+            c.post("/events", json={})   # 401 (bad/no token)
+            c.get("/health")             # 200 — must not reset the counter
+            if c.post("/events", json={}).status_code == 429:
+                got429 = True
+                break
+        assert got429  # still throttled despite the interleaved successes
+    get_settings.cache_clear()
+
+
 def test_rate_limited_429_still_carries_security_headers(tmp_path, monkeypatch):
     """The header middleware must wrap the rate limiter, so even a throttled
     429 ships CSP + nosniff instead of a bare body (M11)."""
