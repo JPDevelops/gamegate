@@ -63,6 +63,34 @@ def test_pump_failed_toast_keeps_items_pending():
     assert len(api.pending_notifications()) == 1  # retried next cycle
 
 
+def test_pump_ack_failure_shows_once_then_gives_up():
+    """B1: if display succeeds but ack keeps failing (e.g. a 401 after token
+    rotation), the card is rendered ONCE and then given up — not re-shown every
+    cycle forever. On the pre-fix code show is called every cycle."""
+    api = FakeApi()
+    api.digests = []
+    api.ack_notification = lambda nid: False   # ack always fails
+    shows = []
+    pump = ToastPump(api, lambda title, body, **kw: shows.append(title) or True)
+    for _ in range(6):
+        pump.run_once()
+    assert len(shows) == 1                      # rendered exactly once
+    assert "n1" in pump._given_up               # retries exhausted → ignored
+
+
+def test_pump_display_failure_drops_after_max_attempts():
+    """B1: a card that can't display gives up after MAX_SHOW_ATTEMPTS instead of
+    being retried forever."""
+    api = FakeApi()
+    api.digests = []
+    shows = []
+    pump = ToastPump(api, lambda title, body, **kw: shows.append(title) or False)
+    for _ in range(6):
+        pump.run_once()
+    assert len(shows) == pump.MAX_SHOW_ATTEMPTS  # tried MAX times, then stopped
+    assert "n1" in pump._given_up
+
+
 def test_dnd_toggle_posts_focused_then_available():
     api = FakeApi()
     dnd = DndController(api)

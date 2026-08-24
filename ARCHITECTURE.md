@@ -2,7 +2,7 @@
 
 ## The one-paragraph version
 
-A lightweight detector on the gaming PC watches running processes and reports state transitions to a FastAPI service. Connectors for Gmail and Discord (Slack is written but disabled in v0.1) normalize incoming messages into one internal Event model, stored idempotently in SQLite. A routing engine combines the current availability state with each event's priority to decide: deliver now, queue, or suppress — using deterministic rules (VIP senders, urgent keywords). When a gaming session ends, queued events become exactly one post-game digest, delivered to Discord. An optional LLM classifier endpoint demonstrates a graceful-fallback pattern but is not yet wired into the automatic ingest path.
+A lightweight detector on the gaming PC watches running processes and reports state transitions to a FastAPI service. Connectors for Gmail and Discord (Slack is written but disabled in v0.1) normalize incoming messages into one internal Event model, stored idempotently in SQLite. A routing engine combines the current availability state with each event's priority to decide: deliver now, queue, or suppress — using deterministic rules (VIP senders, urgent keywords). When a gaming session ends, queued events become exactly one post-game digest, delivered by the **desktop app** (the tray notifier is the default delivery surface; Discord delivery is opt-in via `GAMEGATE_DISCORD_DELIVERY=true`, a product decision from 2026-08-23). An optional LLM classifier endpoint demonstrates a graceful-fallback pattern but is not yet wired into the automatic ingest path.
 
 ## Why external services normalize into one Event model
 
@@ -25,7 +25,7 @@ One current status row (state + application + started_at) and an append-only `se
 
 \* configurable break-through policy — a per-user setting (`urgent_breakthrough`) stored in the DB and edited in the dashboard, passed into `decide()` at ingest time.
 
-Deliver-now events go to a `notifications` queue that the Discord connector drains (send → then ack). Queued events wait for the digest. Suppressed events are stored (audit trail) but consumed immediately.
+Deliver-now events go to a `notifications` queue that the **desktop tray app** drains (send → then ack); the Discord connector can drain it instead when `GAMEGATE_DISCORD_DELIVERY=true`. Queued events wait for the digest. Suppressed events are stored (audit trail) but consumed immediately.
 
 ## How idempotency works
 

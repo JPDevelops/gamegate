@@ -58,3 +58,28 @@ in tests (N16/N17), process-name keying (N18), `_pending_states` process-local
 (N6, single-worker), and assorted style nitpicks. None are bugs or security
 issues. Systemd hardening is committed to the units but not yet live-applied
 (needs a tested restart window).
+
+## Independent review #3 (2026-08-24) — status
+
+Cleaner than #2 (3 blockers / 14 majors vs 3 / 23), and the backend + the honesty
+record were praised. **Fixed:** B1 notification retry loop (ack failures now
+count; render-once; tests on both drop paths), B2 DEPLOYMENT.md made runnable
+(conf.d log format, TLS vhost, certbot in the ladder, correct paths), M2 toast
+honors duration/sound via winotify (+ corrected the wrong-library note), M3
+ARCHITECTURE/DEMO (desktop app is the notifier, not Discord), M4 status-field
+log injection (sanitized + capped + test) and its false pentest claim, M5
+GMAIL_SETUP.md (web client type, real token path, dead VIP env removed),
+config.example.json https, bounds on `undelivered()`/`application`/`game`, and
+the site test count changed to a non-rotting "160+".
+
+**Deferred with a concrete plan — B3 (remove `sudo` from the web tier):** the
+API currently runs with passwordless `sudo systemctl` so a dashboard button can
+start/stop connectors, which means `NoNewPrivileges` can't be set on that unit.
+This is a real design change, not a bug fix, and touches the live connector
+enable/disable flow, so it is scheduled rather than rushed. **Plan:** the
+connector units run always (systemd-enabled) and poll their `*_ENABLED` flag
+(already written to `.env` by `update_env_var`) to decide whether to do work;
+`service_active()` reads the flag instead of `systemctl is-active`; the API drops
+`sudo` entirely and the unit gets `NoNewPrivileges=true` with `ReadWritePaths`
+narrowed to the data dir. Until then it is documented, and the connector units
+already set `NoNewPrivileges=true`.

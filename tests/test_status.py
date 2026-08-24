@@ -31,6 +31,18 @@ def test_state_only_update_clears_application(client):
     assert body["application"] is None
 
 
+def test_application_control_chars_stripped(client):
+    """M4: newlines/control chars in the application name are stripped so they
+    can't forge lines in journald when logged; length is capped."""
+    client.post("/status", json={
+        "state": "gaming",
+        "application": "Rust\n2026-01-01 FAKE LOG LINE\x00" + "x" * 300,
+    })
+    app = client.get("/status").json()["application"]
+    assert "\n" not in app and "\x00" not in app
+    assert len(app) <= 128
+
+
 def test_switching_games_mid_session_makes_a_separate_recap(client):
     """Quit one game and start another without going available: each game gets
     its own session and digest, not one merged recap (M7)."""

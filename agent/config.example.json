@@ -1,5 +1,5 @@
 {
-  "api_url": "http://YOUR-SERVER:8000",
+  "api_url": "https://YOUR-HOST.sslip.io",
   "api_token": "SAME-VALUE-AS-GAMEGATE_API_TOKEN",
   "auto_detect": true,
   "game_processes": [],
