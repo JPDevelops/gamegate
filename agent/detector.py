@@ -256,6 +256,17 @@ class ApiClient:
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
                 return 200 <= response.status < 300
+        except urllib.error.HTTPError as exc:
+            # HTTPError is a URLError subclass — catch it FIRST so an auth
+            # failure isn't mislabeled "unreachable" (N34). This is the single
+            # most likely setup mistake, so point at the real cause.
+            if exc.code == 401:
+                log.error(
+                    "GameGate rejected the token (401) — check api_token in config.json"
+                )
+            else:
+                log.warning("GameGate API error %s — will retry next cycle", exc.code)
+            return False
         except (urllib.error.URLError, TimeoutError) as exc:
             log.warning("GameGate API unreachable (%s) — will retry next cycle", exc)
             return False

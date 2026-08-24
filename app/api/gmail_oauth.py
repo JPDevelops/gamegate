@@ -105,8 +105,13 @@ def write_token_file(tokens: dict, client_id: str, client_secret: str) -> str:
         "token_uri": TOKEN_URL,
     }
     path = Path(token_path)
-    path.write_text(json.dumps(payload))
-    path.chmod(0o600)
+    # Create with 0600 from the start (O_CREAT|O_WRONLY|O_TRUNC) rather than
+    # write-then-chmod, so the refresh token is never briefly world-readable at
+    # the process umask (N36).
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(payload))
+    path.chmod(0o600)  # tighten even if the file already existed with looser perms
     return str(path)
 
 

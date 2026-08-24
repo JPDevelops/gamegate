@@ -59,7 +59,8 @@ All configuration is environment variables — see [`.env.example`](.env.example
 | `GAMEGATE_DB_PATH` | SQLite file location |
 | `GAMEGATE_URGENT_BREAKTHROUGH` | Do urgent events interrupt gaming? (`true`/`false`) |
 | `DISCORD_BOT_TOKEN`, `GAMEGATE_DISCORD_CHANNEL_ID` | Discord connector |
-| `GMAIL_ENABLED`, `GMAIL_VIP_SENDERS`, `GMAIL_TOKEN_PATH` | Gmail connector — see [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md) |
+| `GMAIL_ENABLED`, `GMAIL_TOKEN_PATH` | Gmail connector — see [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md). VIP senders are set in the dashboard Settings (stored in the DB), not via env. |
+| `STEAMGRIDDB_API_KEY` | Optional: game artwork lookups for the desktop app (`/art`) |
 | `SLACK_ENABLED`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | Slack connector — see [docs/SLACK_SETUP.md](docs/SLACK_SETUP.md) |
 | `CLASSIFIER_ENABLED`, `CLASSIFIER_MODEL`, `OPENAI_API_KEY` | Optional AI classifier |
 
