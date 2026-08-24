@@ -19,6 +19,7 @@ class FakeApi:
         ]
         self.digests = [{"id": "d1", "text": "Game Recap — g.exe, 2h 00m\n3 events"}]
         self.acked = []
+        self.abandoned = []
         self.statuses = []
 
     def pending_notifications(self):
@@ -29,11 +30,21 @@ class FakeApi:
         self.notifications = [n for n in self.notifications if n["id"] != nid]
         return True
 
+    def abandon_notification(self, nid):
+        self.abandoned.append(nid)
+        self.notifications = [n for n in self.notifications if n["id"] != nid]
+        return True
+
     def pending_digests(self):
         return list(self.digests)
 
     def ack_digest(self, did):
         self.acked.append(did)
+        self.digests = [d for d in self.digests if d["id"] != did]
+        return True
+
+    def abandon_digest(self, did):
+        self.abandoned.append(did)
         self.digests = [d for d in self.digests if d["id"] != did]
         return True
 
@@ -76,6 +87,20 @@ def test_pump_ack_failure_shows_once_then_gives_up():
         pump.run_once()
     assert len(shows) == 1                      # rendered exactly once
     assert "n1" in pump._given_up               # retries exhausted → ignored
+
+
+def test_giving_up_dead_letters_the_item_server_side(monkeypatch):
+    """Review MAJOR: when the client exhausts its retries on a poison item, it
+    tells the SERVER to abandon it, so the item leaves the pending queue and
+    can't wedge newer items out of the oldest-200 window."""
+    api = FakeApi()
+    api.digests = []
+    api.ack_notification = lambda nid: False   # n1 can never be acked
+    pump = ToastPump(api, lambda title, body, **kw: True)
+    for _ in range(6):
+        pump.run_once()
+    assert "n1" in api.abandoned                 # server was told to dead-letter it
+    assert api.pending_notifications() == []     # it left the pending queue
 
 
 def test_pump_display_failure_drops_after_max_attempts():

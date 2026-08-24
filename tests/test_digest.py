@@ -34,6 +34,21 @@ def test_urgent_breaks_through_during_gaming(client):
     assert client.post(f"/notifications/{notification_id}/ack").status_code == 404
 
 
+def test_abandoned_notification_leaves_the_pending_queue(client):
+    """Review MAJOR: a notification the client gave up on is dead-lettered, so it
+    leaves the pending queue (can't wedge newer items) and can't be abandoned or
+    acked twice."""
+    start_gaming(client)
+    client.post("/events", json=make_event(external_id="u9", priority="urgent"))
+    nid = client.get("/notifications/pending").json()[0]["id"]
+
+    assert client.post(f"/notifications/{nid}/abandon").status_code == 200
+    assert client.get("/notifications/pending").json() == []   # left the queue
+    # Already dead-lettered → abandon and ack both 404 now.
+    assert client.post(f"/notifications/{nid}/abandon").status_code == 404
+    assert client.post(f"/notifications/{nid}/ack").status_code == 404
+
+
 def test_session_end_produces_exactly_one_digest(client):
     start_gaming(client)
     client.post("/events", json=make_event(external_id="d1", priority="actionable"))

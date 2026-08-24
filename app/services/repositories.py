@@ -299,6 +299,19 @@ class DigestRepository:
             )
         return cur.rowcount > 0
 
+    def abandon(self, digest_id: str) -> bool:
+        """Dead-letter: the client gave up delivering this digest. Mark it
+        delivered with failed_at so it leaves the pending queue and can't wedge
+        newer digests behind it, while staying auditable."""
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE digests SET delivered = 1, failed_at = ?"
+                " WHERE id = ? AND delivered = 0",
+                (_now(), digest_id),
+            )
+        return cur.rowcount > 0
+
     @staticmethod
     def _to_dict(row) -> dict:
         return {
@@ -344,5 +357,18 @@ class NotificationRepository:
             cur = conn.execute(
                 "UPDATE notifications SET delivered = 1 WHERE id = ? AND delivered = 0",
                 (notification_id,),
+            )
+        return cur.rowcount > 0
+
+    def abandon(self, notification_id: str) -> bool:
+        """Dead-letter: the client exhausted its retries on this notification.
+        Mark it delivered with failed_at so it leaves the pending queue and can't
+        wedge newer notifications behind it, while staying auditable."""
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE notifications SET delivered = 1, failed_at = ?"
+                " WHERE id = ? AND delivered = 0",
+                (_now(), notification_id),
             )
         return cur.rowcount > 0

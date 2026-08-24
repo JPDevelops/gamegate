@@ -86,11 +86,17 @@ class FullApiClient(ApiClient):
     def ack_notification(self, notification_id: str) -> bool:
         return self._request("POST", f"/notifications/{notification_id}/ack") is not None
 
+    def abandon_notification(self, notification_id: str) -> bool:
+        return self._request("POST", f"/notifications/{notification_id}/abandon") is not None
+
     def pending_digests(self) -> list:
         return self._request("GET", "/digests/pending") or []
 
     def ack_digest(self, digest_id: str) -> bool:
         return self._request("POST", f"/digests/{digest_id}/ack") is not None
+
+    def abandon_digest(self, digest_id: str) -> bool:
+        return self._request("POST", f"/digests/{digest_id}/abandon") is not None
 
     def get_status(self) -> dict | None:
         return self._request("GET", "/status")
@@ -136,34 +142,42 @@ class ToastPump:
         self._shown: set[str] = set()            # rendered once; never re-render
         self._given_up: set[str] = set()         # retries exhausted; fully ignore
 
-    def _show_or_drop(self, item_id: str, title: str, body: str, ack) -> bool:
+    def _show_or_drop(self, item_id: str, title: str, body: str, ack, abandon=None) -> bool:
         """Render an item AT MOST ONCE, then ack. If display OR ack keeps
         failing, give up after MAX_SHOW_ATTEMPTS so a poison item (e.g. an ack
         that 401s after a token rotation) can't re-render the same card every
-        10s forever (review B1). A shown-but-unacked item is retried only at the
-        ack layer — never re-displayed."""
+        10s forever (review B1). On give-up we also tell the SERVER to
+        dead-letter it (abandon), so 200 poison items can't wedge newer ones out
+        of the oldest-200 pending window. A shown-but-unacked item is retried
+        only at the ack layer — never re-displayed."""
         if item_id in self._given_up:
             return False
         if item_id not in self._shown:
             if not self.show(title, body, duration_s=self.duration_s, sound=self.sound):
-                self._bump_fail(item_id)          # display failed
+                self._bump_fail(item_id, abandon)     # display failed
                 return False
             self._shown.add(item_id)              # rendered exactly once
         if ack(item_id):
             self._shown.discard(item_id)
             self._fail_counts.pop(item_id, None)
             return True
-        self._bump_fail(item_id)                  # ack failed — count it too (B1)
+        self._bump_fail(item_id, abandon)             # ack failed — count it too (B1)
         return False
 
-    def _bump_fail(self, item_id: str) -> None:
+    def _bump_fail(self, item_id: str, abandon=None) -> None:
         self._fail_counts[item_id] = self._fail_counts.get(item_id, 0) + 1
         if self._fail_counts[item_id] >= self.MAX_SHOW_ATTEMPTS:
             log.warning(
-                "Giving up on notification %s after %d attempts; it stays pending "
-                "server-side but won't be re-shown", item_id, self._fail_counts[item_id]
+                "Giving up on %s after %d attempts; dead-lettering it server-side "
+                "so it won't be re-shown or block newer items",
+                item_id, self._fail_counts[item_id]
             )
             self._given_up.add(item_id)
+            if abandon is not None:
+                try:
+                    abandon(item_id)   # server dead-letters it → leaves pending queue
+                except Exception:      # noqa: BLE001 — never let cleanup crash the pump
+                    log.exception("Failed to abandon %s server-side", item_id)
 
     def _apply_settings(self) -> None:
         settings = self.api.client_settings()
@@ -180,14 +194,18 @@ class ToastPump:
             if nid is None:  # a malformed server row must not abort the whole cycle
                 continue
             title, body = notification_title_body(notification.get("event", {}))
-            if self._show_or_drop(nid, title, body, self.api.ack_notification):
+            if self._show_or_drop(
+                nid, title, body, self.api.ack_notification, self.api.abandon_notification
+            ):
                 delivered += 1
         for digest in self.api.pending_digests():
             did = digest.get("id")
             if did is None:
                 continue
             title, body = digest_title_body(digest)
-            if self._show_or_drop(did, title, body, self.api.ack_digest):
+            if self._show_or_drop(
+                did, title, body, self.api.ack_digest, self.api.abandon_digest
+            ):
                 delivered += 1
         return delivered
 

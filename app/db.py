@@ -96,6 +96,11 @@ class Database:
                 # (dashboard-authoritative DND): NULL = no override, else the
                 # override IS the effective state and the detector can't clobber it.
                 "ALTER TABLE status ADD COLUMN override_state TEXT",
+                # Dead-letter marker: a delivery the client gave up on is marked
+                # delivered with failed_at set, so it leaves the pending queue and
+                # can't wedge newer items behind it (review MAJOR: poison starve).
+                "ALTER TABLE notifications ADD COLUMN failed_at TEXT",
+                "ALTER TABLE digests ADD COLUMN failed_at TEXT",
             ):
                 try:
                     conn.execute(migration)
