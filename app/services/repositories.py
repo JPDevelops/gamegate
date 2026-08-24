@@ -242,9 +242,10 @@ class DigestRepository:
         ).fetchone()
         return self._to_dict(row) if row else None
 
-    def pending(self) -> list[dict]:
+    def pending(self, limit: int = 200) -> list[dict]:
         rows = self.db.connection().execute(
-            "SELECT * FROM digests WHERE delivered = 0 ORDER BY created_at ASC"
+            "SELECT * FROM digests WHERE delivered = 0 ORDER BY created_at ASC LIMIT ?",
+            (limit,),  # bound the response (M11)
         ).fetchall()
         return [self._to_dict(r) for r in rows]
 
@@ -288,11 +289,12 @@ class NotificationRepository:
             )
         return notification_id
 
-    def pending(self) -> list[dict]:
+    def pending(self, limit: int = 200) -> list[dict]:
         rows = self.db.connection().execute(
             "SELECT n.id AS notification_id, e.* FROM notifications n"
             " JOIN events e ON e.id = n.event_id"
-            " WHERE n.delivered = 0 ORDER BY n.created_at ASC"
+            " WHERE n.delivered = 0 ORDER BY n.created_at ASC LIMIT ?",
+            (limit,),  # bound the response (M11)
         ).fetchall()
         return [
             {

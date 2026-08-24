@@ -27,8 +27,10 @@ dev = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["app"]
+[tool.setuptools.packages.find]
+# Include app AND all its subpackages (app.api, app.services, ...). Listing only
+# ["app"] omitted the subpackages from a built wheel — imports would fail (M3).
+include = ["app*"]
 
 [tool.ruff]
 line-length = 100

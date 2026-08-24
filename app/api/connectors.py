@@ -107,7 +107,7 @@ def _revoke_google_grant(token_path: Path) -> bool:
         with httpx.Client(timeout=10) as client:
             resp = client.post(
                 "https://oauth2.googleapis.com/revoke",
-                params={"token": secret},
+                data={"token": secret},  # POST body, not the URL — keeps the token out of logs (M7)
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
         if resp.status_code == 200:
