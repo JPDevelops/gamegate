@@ -12,7 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 discord = ["discord.py>=2.7"]
-agent = ["psutil>=5.9", "pystray>=0.19", "pillow>=10", "pywebview>=5", "winotify>=1.1"]
+agent = ["psutil>=5.9", "pystray>=0.19", "pillow>=10", "pywebview>=5", "winotify>=1.1", "winsdk>=1.0; sys_platform == 'win32'"]
 gmail = ["google-api-python-client>=2.100", "google-auth-oauthlib>=1.1"]
 slack = ["slack-sdk>=3.27"]
 

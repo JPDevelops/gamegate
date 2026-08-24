@@ -25,7 +25,7 @@ jobs:
           ruff check app tests agent
           pytest -q
       - name: Install build deps
-        run: pip install pyinstaller psutil pystray pillow pywebview winotify
+        run: pip install pyinstaller psutil pystray pillow pywebview winotify winsdk
         working-directory: agent
       - name: Stamp build
         shell: pwsh
@@ -37,7 +37,10 @@ jobs:
         # --add-data bundles the build stamp INTO the single-file exe (it unpacks
         # under _MEIPASS at runtime), so a downloaded release reports its real
         # build instead of "unstamped build" (#13). ';.' is the Windows separator.
-        run: pyinstaller --onefile --noconsole --name GameGate --icon gamegate.ico --add-data "build_info.json;." tray_app.py
+        # --collect-submodules winsdk: winsdk loads its WinRT submodules lazily,
+        # so PyInstaller can't see them by static analysis — collect them or the
+        # Windows notification capture import fails at runtime in the exe.
+        run: pyinstaller --onefile --noconsole --name GameGate --icon gamegate.ico --add-data "build_info.json;." --collect-submodules winsdk tray_app.py
         working-directory: agent
       - name: Upload artifact
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
