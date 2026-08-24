@@ -6,10 +6,15 @@ requests without it. If GAMEGATE_API_TOKEN is unset, auth is disabled — but
 the app now refuses to *start* in that state unless GAMEGATE_ENV is explicitly
 "development" (see app/main.py), so an unset token fails closed in production.
 
-Browsers never hold the master token. The dashboard login exchanges the token
-for a signed, expiring **session cookie** (issue_session_cookie): a leaked
-cookie is a time-boxed credential that is not the master token itself, and
-rotating GAMEGATE_API_TOKEN invalidates every outstanding cookie at once.
+Browsers don't *store* the master token: the first `/app?key=<token>` visit
+immediately exchanges it for a signed, expiring **session cookie**
+(issue_session_cookie) and 303-redirects, so what persists is a time-boxed
+credential that is not the master token, and rotating GAMEGATE_API_TOKEN
+invalidates every outstanding cookie at once. Caveat, not yet closed: the token
+does travel once in that opening `?key=` URL, so it can land in local browser/
+webview history for that request. Server logs are scrubbed of it (nginx logs
+`$uri`, uvicorn runs `--no-access-log`), but a one-time login ticket distinct
+from the API token is the real fix (tracked as deferred hardening).
 """
 import hashlib
 import hmac

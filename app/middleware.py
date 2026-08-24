@@ -115,7 +115,14 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
             )
         response: Response = await call_next(request)
-        if response.status_code == 401:
+        # A keyless GET /app returns the 401 login page, but that's just viewing
+        # the login screen, not a credential guess — counting it would let the
+        # owner lock their own IP by refreshing a bookmarked /app (review MINOR).
+        # Only an actual ?key= attempt on /app is a guess worth throttling.
+        is_login_page_view = (
+            request.url.path == "/app" and "key" not in request.query_params
+        )
+        if response.status_code == 401 and not is_login_page_view:
             fails = self._failures[ip]
             fails.append(now)
             while fails and now - fails[0] > self.window_s:

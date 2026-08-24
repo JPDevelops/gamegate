@@ -20,7 +20,7 @@ I'd rather show you a real bug I found at 11pm than recite a feature list.
 |-------|------|--------------|
 | API wiring | `app/main.py` | FastAPI app: routers, middleware order, startup guard |
 | Data shapes | `app/models/` | Pydantic models — bad input 422s before touching logic |
-| All SQL | `app/services/repositories.py` | The only file with queries; swap SQLite→Postgres here |
+| Most SQL | `app/services/repositories.py` | Where nearly all queries live (two deliberate exceptions: the transactional close in `status_service.py` and the `/art` + `/data/clear` maintenance routes) |
 | Routing core | `app/services/routing.py` | Pure function: state × priority → deliver/queue/suppress |
 | Digest | `app/services/digest_service.py` | Deterministic: same events in, same digest out |
 | Sessions | `app/services/status_service.py` | Entering gaming opens a session; leaving fires one digest |
@@ -86,8 +86,12 @@ hardware and fixed. Full detail in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 For many users: SQLite → PostgreSQL behind the existing repository layer, a
 queue between ingestion and routing, per-user config and per-client auth, and
-Gmail push instead of polling. The repository boundary is what makes the
-database swap credible — nothing outside `repositories.py` touches SQL.
+Gmail push instead of polling. The repository boundary makes that swap *tractable*
+— but it isn't a drop-in. The code leans on SQLite specifics (`INSERT OR REPLACE`,
+partial indexes, `rowid`, thread-local connections) and a little SQL lives outside
+`repositories.py` (the transactional close, the `/art` and `/data/clear` routes),
+so a real port means a second adapter, a migration story, and a transaction
+abstraction — engineering work, not a config change.
 
 ## What isn't done yet (honest limitations)
 

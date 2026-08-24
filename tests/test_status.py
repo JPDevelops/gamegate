@@ -127,6 +127,35 @@ def test_recap_not_starved_by_a_large_out_of_window_backlog(client):
     assert recap["total_events"] == 1  # only the in-window message, backlog excluded
 
 
+def test_recap_window_handles_non_utc_offsets(client):
+    """The recap window compares received_at as ISO strings in SQLite, so every
+    stored timestamp must be normalized to a UTC offset. An event that arrives
+    DURING the game but is expressed in a -07:00 offset has a raw string whose
+    wall-clock hour sorts hours before the window start; only converting it to
+    UTC (astimezone) puts it back in range. Fails on the old code, which kept the
+    original offset and dropped this message from the recap."""
+    from datetime import UTC, datetime, timedelta, timezone
+
+    from tests.test_events import make_event
+
+    now = datetime.now(UTC)
+    start = now - timedelta(minutes=10)
+    during_instant = now - timedelta(minutes=5)              # inside [start, now]
+    during_pt = during_instant.astimezone(timezone(timedelta(hours=-7)))  # same instant, -07:00
+
+    client.post("/status", json={
+        "state": "gaming", "application": "g.exe", "started_at": start.isoformat()})
+    client.post("/events", json=make_event(
+        external_id="pt-1", title="PT-DURING", priority="informational",
+        requires_action=False, received_at=during_pt.isoformat()))
+    client.post("/status", json={"state": "available"})       # build the recap
+
+    import json as _json
+    recap = client.get("/digest/latest").json()
+    assert "PT-DURING" in _json.dumps(recap["items"])          # not dropped by offset
+    assert recap["total_events"] == 1
+
+
 def test_switching_games_mid_session_makes_a_separate_recap(client):
     """Quit one game and start another without going available: each game gets
     its own session and digest, not one merged recap (M7)."""

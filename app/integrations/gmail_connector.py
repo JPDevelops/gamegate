@@ -92,15 +92,17 @@ def build_real_client() -> GmailClient:
     class RealGmailClient:
         def list_new_messages(self) -> list[dict]:
             refs, page_token = [], None
-            # Paginate (Vega round 2): a backlog beyond one page must not
-            # starve older messages. Hard cap keeps a poll bounded.
+            # Paginate: a backlog beyond one page must not starve older messages.
+            # The 200 hard cap keeps a poll bounded — request only the remaining
+            # room each page and slice, so the final page can't push the total
+            # past 200 (review MINOR: a 150+100 page could otherwise reach 250).
             while len(refs) < 200:
                 listing = (
                     service.users()
                     .messages()
                     .list(
                         userId="me", q="is:unread newer_than:1d",
-                        maxResults=100, pageToken=page_token,
+                        maxResults=min(100, 200 - len(refs)), pageToken=page_token,
                     )
                     .execute()
                 )
@@ -108,6 +110,7 @@ def build_real_client() -> GmailClient:
                 page_token = listing.get("nextPageToken")
                 if not page_token:
                     break
+            refs = refs[:200]  # belt-and-suspenders: never exceed the cap
             results = []
             for ref in refs:
                 msg = (
@@ -123,7 +126,7 @@ def build_real_client() -> GmailClient:
                 from datetime import UTC, datetime
 
                 # internalDate is epoch millis — always parseable, unlike the
-                # RFC-2822 Date header (Vega audit #6).
+                # RFC-2822 Date header.
                 received = datetime.fromtimestamp(
                     int(msg.get("internalDate", 0)) / 1000, tz=UTC
                 ).isoformat()

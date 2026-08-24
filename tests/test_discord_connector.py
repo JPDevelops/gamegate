@@ -76,6 +76,22 @@ def test_delivery_pump_keeps_items_pending_when_discord_is_down():
     assert len(api.pending_notifications()) == 1
 
 
+def test_delivery_pump_does_not_resend_when_ack_keeps_failing():
+    """MAJOR: a successful Discord send followed by a failing ack must NOT
+    re-post to the channel every cycle. The send happens once; only the ack is
+    retried. Without the per-process 'already sent' set this spams the channel."""
+    api = FakeApi()
+    api.ack_notification = lambda nid: False   # Discord accepts the send, ack always fails
+    api.ack_digest = lambda did: False
+    sent = []
+    pump = DeliveryPump(api, lambda text: sent.append(text) or True)
+    pump.run_once()
+    pump.run_once()
+    pump.run_once()
+    # one notification + one digest, each sent exactly once despite 3 cycles
+    assert len(sent) == 2, f"resend storm: {sent}"
+
+
 def test_status_reply_formats():
     assert "unreachable" in format_status_reply(None)
     assert "🎮" in format_status_reply({"state": "gaming", "application": "cs2.exe"})

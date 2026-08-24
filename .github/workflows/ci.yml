@@ -38,8 +38,15 @@ jobs:
           fetch-depth: 0   # full history so the scan covers every commit, all branches
       - name: Install gitleaks
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
-            | tar -xz gitleaks
+          # Pin the version AND verify its sha256 before executing it — an
+          # unverified download of a binary we then run is its own supply-chain
+          # hole (review MAJOR: verify the gitleaks archive).
+          TARBALL=gitleaks_8.21.2_linux_x64.tar.gz
+          SHA=5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+          curl -sSL -o "$TARBALL" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/$TARBALL"
+          echo "$SHA  $TARBALL" | sha256sum -c -
+          tar -xzf "$TARBALL" gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
       - name: Scan full git history for secrets
         run: gitleaks detect --source . --redact --verbose

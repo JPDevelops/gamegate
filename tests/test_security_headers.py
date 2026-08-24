@@ -31,6 +31,30 @@ def test_auth_rate_limit_blocks_after_repeated_failures(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_keyless_dashboard_views_do_not_lock_out_the_owner(tmp_path, monkeypatch):
+    """MINOR: opening a bookmarked keyless /app just shows the 401 login page;
+    refreshing it repeatedly must NOT trip the auth throttle (a real ?key= guess
+    still counts). Otherwise the owner locks their own IP by viewing the login."""
+    from fastapi.testclient import TestClient
+
+    from app import db as db_module
+    from app.config import get_settings
+    from app.main import app
+
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "secret")
+    get_settings.cache_clear()
+    db_module.init_database(str(tmp_path / "t.db"))
+    with TestClient(app) as c:
+        # 20 keyless login-page views — all 401, none throttled
+        codes = [c.get("/app").status_code for _ in range(20)]
+        assert set(codes) == {401}
+        assert 429 not in codes
+        # a genuine bad-key guess is still counted toward the throttle
+        guesses = [c.get("/app", params={"key": "wrong"}).status_code for _ in range(12)]
+        assert 429 in guesses
+    get_settings.cache_clear()
+
+
 def test_xff_only_trusted_from_local_proxy():
     """X-Forwarded-For is honored only when the peer is our loopback proxy;
     a direct caller cannot mint identities or frame a victim via XFF (M3)."""
@@ -104,28 +128,29 @@ def test_rate_limited_429_still_carries_security_headers(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_rate_limit_uses_last_xff_hop_not_spoofable(tmp_path, monkeypatch):
-    """XFF spoof must NOT grant fresh quota: identity is the last (nginx) hop."""
-    from fastapi.testclient import TestClient
+def test_rate_limit_uses_last_xff_hop_not_spoofable():
+    """From a trusted proxy peer, identity is the LAST XFF hop (the value nginx
+    appended), so rotating a spoofed LEFT entry can't mint fresh quota. This is a
+    real unit test of _client(): the previous integration version was vacuous —
+    under TestClient the peer is 'testclient' (untrusted), so XFF was never
+    consulted and it would pass even if the code picked the spoofable first hop."""
+    from types import SimpleNamespace
 
-    from app import db as db_module
-    from app.config import get_settings
-    from app.main import app
+    from app.middleware import AuthRateLimitMiddleware
 
-    monkeypatch.setenv("GAMEGATE_API_TOKEN", "secret")
-    get_settings.cache_clear()
-    db_module.init_database(str(tmp_path / "t.db"))
-    with TestClient(app) as c:
-        # simulate nginx appending the real client (1.1.1.1) after a spoofed value
-        got429 = False
-        for i in range(14):
-            r = c.post("/events", json={},
-                       headers={"X-Forwarded-For": f"9.9.9.{i}, 1.1.1.1"})
-            if r.status_code == 429:
-                got429 = True
-                break
-        assert got429  # rotating the spoofed left entry did not evade the limiter
-    get_settings.cache_clear()
+    mw = AuthRateLimitMiddleware.__new__(AuthRateLimitMiddleware)
+
+    def req(peer, xff):
+        return SimpleNamespace(
+            headers={"x-forwarded-for": xff} if xff else {},
+            client=SimpleNamespace(host=peer),
+        )
+
+    # nginx (127.0.0.1) appended the real client 1.1.1.1 after a spoofed 9.9.9.x.
+    # Identity is always the last hop, no matter how the attacker rotates the left
+    # entry — so all these requests key to the SAME identity and share one quota.
+    ids = {mw._client(req("127.0.0.1", f"9.9.9.{i}, 1.1.1.1")) for i in range(20)}
+    assert ids == {"1.1.1.1"}
 
 
 def test_authenticated_responses_are_not_cacheable(client):
