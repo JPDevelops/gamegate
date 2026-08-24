@@ -40,6 +40,20 @@ def test_callback_rejects_unknown_state(client, oauth_env):
     assert response.status_code == 400
 
 
+def test_callback_rejects_expired_state(client, oauth_env):
+    """A known but TTL-expired state must be rejected at callback time, even if
+    no new /connect/gmail was issued to trigger cleanup. Fails on the old code,
+    which only checked membership and would proceed to token exchange."""
+    import time
+
+    state = "expired-state-token"
+    gmail_oauth._pending_states[state] = time.time() - 1  # already past its TTL
+    response = client.get("/oauth/gmail/callback", params={"code": "x", "state": state})
+    assert response.status_code == 400
+    assert "expired" in response.json()["detail"].lower()
+    assert state not in gmail_oauth._pending_states  # consumed either way
+
+
 def test_exchange_code_parses_google_response():
     def handler(request):
         assert request.url == httpx.URL(gmail_oauth.TOKEN_URL)

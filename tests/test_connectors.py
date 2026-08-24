@@ -30,9 +30,39 @@ def test_update_env_var_does_not_uncomment_or_leave_tmp(tmp_path, monkeypatch):
     assert "GMAIL_ENABLED=true" in text             # active value appended
     assert "CLASSIFIER_ENABLED=true" in text
     assert "CLASSIFIER_ENABLED=false" not in text   # replaced, not duplicated
-    assert not (tmp_path / ".env.tmp").exists()     # atomic swap cleaned up
+    leftovers = list(tmp_path.glob(".env.*.tmp"))    # atomic swap cleaned up
+    assert leftovers == []
     if os.name == "posix":  # POSIX file modes only — Windows has no 0600 (M7)
         assert oct(env.stat().st_mode)[-3:] == "600"  # secrets file is 0600
+
+
+def test_update_env_var_survives_concurrent_writers(tmp_path, monkeypatch):
+    """MAJOR #5: N connector toggles firing at once must all persist — no
+    lost updates and no corruption. The old fixed-name unlocked read-modify-
+    write could drop updates when two writers read the same old content."""
+    import threading
+
+    env = tmp_path / ".env"
+    env.write_text("BASE=1\n")
+    monkeypatch.setattr(connectors_module, "ENV_PATH", env)
+
+    n = 24
+    start = threading.Barrier(n)
+
+    def writer(i):
+        start.wait()  # release all threads into the write at once
+        connectors_module.update_env_var(f"KEY_{i:02d}", "true")
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    text = env.read_text()
+    for i in range(n):
+        assert f"KEY_{i:02d}=true" in text, f"lost update for KEY_{i:02d}"
+    assert list(tmp_path.glob(".env.*.tmp")) == []  # no stray temp files
 
 
 def test_gmail_disconnect_removes_token_and_flag(client, env_file, tmp_path, monkeypatch):

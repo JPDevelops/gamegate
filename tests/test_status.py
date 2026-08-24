@@ -72,6 +72,46 @@ def test_recap_only_includes_messages_received_during_the_game(client):
     assert "AROSE-DURING" in blob and "STALE-BEFORE" not in blob
 
 
+def test_recap_not_starved_by_a_large_out_of_window_backlog(client):
+    """Review MAJOR (LIMIT-before-filter): a big backlog of never-consumed
+    'away'/'focused' events (delivered=0 forever under decision C) must NOT push
+    a game's real in-window message out of its recap. Filtering the window in
+    SQL keeps the 1000-row cap on the rows that matter. Fails on the old code,
+    which took undelivered()'s 1000 oldest rows and filtered in Python.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.db import get_database
+    from tests.test_events import make_event
+
+    now = datetime.now(UTC)
+    # 1001 stale, out-of-window events, oldest created_at — bulk insert for speed.
+    conn = get_database().connection()
+    with conn:
+        for i in range(1001):
+            ts = (now - timedelta(days=30) + timedelta(seconds=i)).isoformat()
+            conn.execute(
+                "INSERT INTO events (id, source, external_id, sender, title,"
+                " content, received_at, priority, requires_action, metadata,"
+                " created_at, delivered) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
+                (f"stale-{i}", "gmail", f"stale-{i}", "old@x", "OLD", "",
+                 ts, "informational", 0, "{}", ts),
+            )
+
+    start = now - timedelta(minutes=10)
+    client.post("/status", json={
+        "state": "gaming", "application": "g.exe", "started_at": start.isoformat()})
+    client.post("/events", json=make_event(
+        external_id="in-window", title="REAL-INGAME", priority="informational",
+        requires_action=False, received_at=(now - timedelta(minutes=2)).isoformat()))
+    client.post("/status", json={"state": "available"})  # build the recap
+
+    import json as _json
+    recap = client.get("/digest/latest").json()
+    assert "REAL-INGAME" in _json.dumps(recap["items"])  # not starved out
+    assert recap["total_events"] == 1  # only the in-window message, backlog excluded
+
+
 def test_switching_games_mid_session_makes_a_separate_recap(client):
     """Quit one game and start another without going available: each game gets
     its own session and digest, not one merged recap (M7)."""

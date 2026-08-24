@@ -92,6 +92,26 @@ class EventRepository:
         ).fetchall()
         return [self._to_event(r) for r in rows]
 
+    def undelivered_in_window(
+        self, start_iso: str, end_iso: str, limit: int = 1000
+    ) -> list[Event]:
+        """Undelivered events whose received_at falls inside [start, end].
+
+        The window is filtered in SQL *before* the LIMIT, so the cap bounds the
+        in-window rows we actually want — not an ever-growing prefix of stale,
+        out-of-window 'away'/'focused' events that never get consumed. Doing the
+        window filter in Python after `undelivered()` would let ≥1000 old queued
+        events starve a game's real messages out of its recap (review MAJOR:
+        LIMIT-before-filter). received_at is stored as UTC isoformat, so the ISO
+        string BETWEEN compares chronologically."""
+        rows = self.db.connection().execute(
+            "SELECT * FROM events WHERE delivered = 0 AND priority != 'ignore'"
+            " AND received_at >= ? AND received_at <= ?"
+            " ORDER BY created_at ASC, rowid ASC LIMIT ?",
+            (start_iso, end_iso, limit),
+        ).fetchall()
+        return [self._to_event(r) for r in rows]
+
     def mark_read(self, event_id: str, read: bool = True) -> bool:
         """Idempotent view-state flip. Returns False for unknown ids."""
         conn = self.db.connection()
@@ -192,34 +212,13 @@ class SessionRepository:
             "SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
         ).fetchone()
 
-    def close_current(self) -> dict | None:
-        row = self.current()
-        if row is None:
-            return None
-        ended = datetime.now(UTC)
-        started = datetime.fromisoformat(row["started_at"])
-        if started.tzinfo is None:
-            started = started.replace(tzinfo=UTC)
-        duration = max(0, int((ended - started).total_seconds()))
-        conn = self.db.connection()
-        with conn:
-            # Gate the close on the session still being open (ended_at IS NULL)
-            # and check rowcount: with two concurrent "available" transitions,
-            # exactly one UPDATE wins the row and returns a dict; the loser gets
-            # rowcount 0 and returns None, so only one digest is ever built.
-            cur = conn.execute(
-                "UPDATE sessions SET ended_at = ?, duration_seconds = ?"
-                " WHERE id = ? AND ended_at IS NULL",
-                (ended.isoformat(), duration, row["id"]),
-            )
-        if cur.rowcount == 0:
-            return None
-        return {
-            "id": row["id"], "application": row["application"],
-            "app_id": row["app_id"],  # column guaranteed by the init migration
-            "started_at": row["started_at"], "ended_at": ended.isoformat(),
-            "duration_seconds": duration,
-        }
+    # NOTE: there is no close_current() here on purpose. Closing a session,
+    # building its recap, and consuming its events are ONE transactional unit
+    # that lives in StatusService._close_session() (so a crash can't leave a
+    # closed session with no recap). A separate repo-level close was previously
+    # kept only for a concurrency test; it was dead in production and gave a
+    # false sense that the test covered the real path, so it was removed
+    # (review MAJOR: test guarded dead code).
 
 
 class DigestRepository:

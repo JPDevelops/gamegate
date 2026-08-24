@@ -149,9 +149,13 @@ def connect_gmail(
 def gmail_callback(code: str = "", state: str = "", error: str = "") -> HTMLResponse:
     if error:
         raise HTTPException(status_code=400, detail=f"Google reported: {error}")
-    if not code or state not in _pending_states:
+    # Atomically claim the state (single use) AND enforce its TTL right here.
+    # Cleanup otherwise only runs when a NEW state is issued, so without this a
+    # captured state would stay valid indefinitely if no further /connect/gmail
+    # ever happened. pop() removes it whether or not it is expired.
+    expiry = _pending_states.pop(state, None) if code else None
+    if expiry is None or expiry < time.time():
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
-    del _pending_states[state]  # single use
 
     client_id, client_secret, redirect_uri = _oauth_config()
     tokens = exchange_code(code, client_id, client_secret, redirect_uri)
