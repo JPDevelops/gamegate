@@ -1,38 +1,88 @@
-# GameGate self-updater (dev machine): pull latest, rebuild, relaunch.
-# Spawned by the tray's "Update GameGate" menu item; the app quits right
-# after spawning so the exe file is unlocked for the rebuild.
+# GameGate self-updater: silent console, styled progress window, auto-restart.
+# Spawned hidden by the tray's "Update GameGate" item. ASCII ONLY in this file:
+# PowerShell 5.1 reads BOM-less scripts as ANSI and non-ASCII becomes syntax.
 $ErrorActionPreference = "Continue"
 $agent = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo  = Split-Path -Parent $agent
+$log   = Join-Path $agent "update.log"
 
-Write-Host ""
-Write-Host "=== GameGate updater ===" -ForegroundColor Magenta
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$form = New-Object System.Windows.Forms.Form
+$form.FormBorderStyle = "None"
+$form.Size = New-Object System.Drawing.Size(380, 96)
+$form.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#0e1011")
+$form.TopMost = $true
+$form.ShowInTaskbar = $false
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$form.StartPosition = "Manual"
+$form.Location = New-Object System.Drawing.Point(($screen.Width - 396), 16)
+
+$title = New-Object System.Windows.Forms.Label
+$title.Text = "Updating GameGate"
+$title.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#e7eae8")
+$title.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$title.Location = New-Object System.Drawing.Point(16, 12)
+$title.AutoSize = $true
+$form.Controls.Add($title)
+
+$stage = New-Object System.Windows.Forms.Label
+$stage.Text = "Starting..."
+$stage.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#7e8681")
+$stage.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$stage.Location = New-Object System.Drawing.Point(16, 34)
+$stage.AutoSize = $true
+$form.Controls.Add($stage)
+
+$bar = New-Object System.Windows.Forms.ProgressBar
+$bar.Minimum = 0; $bar.Maximum = 100; $bar.Value = 5
+$bar.Style = "Continuous"
+$bar.Location = New-Object System.Drawing.Point(16, 58)
+$bar.Size = New-Object System.Drawing.Size(348, 14)
+$form.Controls.Add($bar)
+
+$form.Show()
+[System.Windows.Forms.Application]::DoEvents()
+
+function Step($pct, $txt) {
+  $bar.Value = $pct
+  $stage.Text = $txt
+  [System.Windows.Forms.Application]::DoEvents()
+}
+
+function Fail($why) {
+  $form.Close()
+  [System.Windows.Forms.MessageBox]::Show(
+    "GameGate update failed: $why`nDetails in agent\update.log",
+    "GameGate Update", "OK", "Error") | Out-Null
+  exit 1
+}
+
+Step 10 "Closing GameGate..."
 Start-Sleep -Seconds 2
 taskkill /F /IM GameGate.exe 2>$null | Out-Null
 
+Step 25 "Downloading the latest version..."
 Set-Location $repo
-Write-Host "[1/4] Pulling latest..." -ForegroundColor Cyan
-git pull
+git pull *> $log
+if ($LASTEXITCODE -ne 0) { Fail "download (git pull) failed" }
 
 Set-Location $agent
 $hash = git rev-parse --short HEAD
 $stamp = Get-Date -Format "MMM d HH:mm"
 "{`"build`": `"$hash`", `"built`": `"$stamp`"}" | Out-File -Encoding utf8 build_info.json
-Write-Host "[2/4] Building GameGate.exe $hash (takes ~30s)..." -ForegroundColor Cyan
+
+Step 45 "Building (about 30 seconds)..."
 if (Test-Path "dist\GameGate.exe") { Remove-Item "dist\GameGate.exe" -Force }
-python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py
+python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py *>> $log
+if (-not (Test-Path "dist\GameGate.exe")) { Fail "build failed" }
 
-if (-not (Test-Path "dist\GameGate.exe")) {
-  Write-Host "BUILD FAILED - see output above. Press Enter to close." -ForegroundColor Red
-  Read-Host
-  exit 1
-}
-
-Write-Host "[3/4] Copying config..." -ForegroundColor Cyan
+Step 90 "Finishing up..."
 if (Test-Path "config.json") { Copy-Item "config.json" "dist\" -Force }
 if (Test-Path "build_info.json") { Copy-Item "build_info.json" "dist\" -Force }
 
-Write-Host "[4/4] Launching the new GameGate..." -ForegroundColor Cyan
+Step 100 "Restarting GameGate..."
 Start-Process "$agent\dist\GameGate.exe"
-Write-Host "Done! This window closes in 5 seconds." -ForegroundColor Green
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 1
+$form.Close()

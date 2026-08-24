@@ -181,6 +181,18 @@ def windows_toast(title: str, body: str, duration_s: int = 8, sound: bool = True
         return False
 
 
+def _child_env() -> dict:
+    """Environment for child processes, scrubbed of PyInstaller's onefile
+    bootloader vars. Without this, a frozen GameGate.exe spawning a DIFFERENT
+    executable trips 'Security validation failure: parent process has
+    different executable'."""
+    env = dict(os.environ)
+    for key in list(env):
+        if key.startswith("_PYI") or key in ("_MEIPASS2", "_MEIPASS"):
+            del env[key]
+    return env
+
+
 def build_window_url(config: dict) -> str:
     """Dashboard URL for the desktop window; the key logs the webview in
     once, after which the HttpOnly cookie takes over."""
@@ -193,9 +205,9 @@ def open_window() -> None:
     """Launch the GameGate window as a separate process, so closing it never
     touches the tray/detector and the tray's single-instance lock stays clean."""
     if getattr(sys, "frozen", False):
-        subprocess.Popen([sys.executable, "--window"])
+        subprocess.Popen([sys.executable, "--window"], env=_child_env())
     else:
-        subprocess.Popen([sys.executable, __file__, "--window"])
+        subprocess.Popen([sys.executable, __file__, "--window"], env=_child_env())
 
 
 def _darken_titlebar(window) -> None:
@@ -310,10 +322,12 @@ def launch_updater() -> bool:
         / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     )
     launcher = str(powershell) if powershell.exists() else "powershell.exe"
-    creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    # Hidden console: the updater shows its own styled progress window.
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     subprocess.Popen(
-        [launcher, "-ExecutionPolicy", "Bypass", "-File", str(script)],
-        creationflags=creationflags,
+        [launcher, "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+         "-File", str(script)],
+        creationflags=creationflags, env=_child_env(),
     )
     return True
 

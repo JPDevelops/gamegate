@@ -186,3 +186,15 @@ def test_build_info_reads_stamp(tmp_path, monkeypatch):
     assert tray_app.build_info() == "source"
     (tmp_path / "build_info.json").write_text(jsonlib.dumps({"build": "abc1234", "built": "Aug 24 02:10"}))
     assert tray_app.build_info() == "abc1234 · Aug 24 02:10"
+
+
+def test_child_env_scrubs_pyinstaller_vars(monkeypatch):
+    import tray_app
+
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", "x")
+    monkeypatch.setenv("_MEIPASS2", "y")
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "keep-me")
+    env = tray_app._child_env()
+    assert "_PYI_ARCHIVE_FILE" not in env
+    assert "_MEIPASS2" not in env
+    assert env["GAMEGATE_API_TOKEN"] == "keep-me"

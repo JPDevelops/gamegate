@@ -226,3 +226,4 @@ credentials.json
 gamegate.db
 *.db-wal
 *.db-shm
+agent/update.log
