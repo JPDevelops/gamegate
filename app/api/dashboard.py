@@ -8,11 +8,6 @@ GET /connections  — real per-connector status: connected / needs setup /
 GET /digests      — digest history for the Inbox tab.
 """
 import os
-import secrets
-
-
-def _ct_eq(a: str, b: str) -> bool:
-    return secrets.compare_digest((a or "").encode("utf-8", "ignore"), (b or "").encode())
 from pathlib import Path
 from typing import Annotated
 
@@ -22,10 +17,18 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import __version__
 from app.api.connectors import service_active
 from app.config import get_settings
-from app.deps import get_digest_repo
-from app.security import COOKIE_NAME, require_api_token
+from app.deps import get_digest_repo, get_settings_service
+from app.security import (
+    COOKIE_NAME,
+    SESSION_TTL_SECONDS,
+    constant_time_equals,
+    issue_session_cookie,
+    require_api_token,
+    verify_session_cookie,
+)
 from app.services.digest_service import render_text
 from app.services.repositories import DigestRepository
+from app.services.settings_service import SettingsService
 
 router = APIRouter()
 
@@ -49,8 +52,11 @@ def dashboard(
     gamegate_token: Annotated[str | None, Cookie()] = None,
 ) -> HTMLResponse:
     expected = get_settings().api_token
-    if expected and _ct_eq(key, expected) and not _ct_eq(gamegate_token, expected):
-        # Exchange the one-time link for a cookie and drop the key from the URL.
+    logged_in = verify_session_cookie(gamegate_token, expected) if expected else False
+    key_ok = bool(expected) and constant_time_equals(key, expected)
+    if key_ok and not logged_in:
+        # Exchange the one-time link for a signed session cookie (never the raw
+        # token) and drop the key from the URL.
         response = RedirectResponse("/app", status_code=303)
         # Secure when the dashboard is reached over HTTPS (nginx sets
         # X-Forwarded-Proto); stays unset for local HTTP clients so nothing
@@ -58,13 +64,21 @@ def dashboard(
         over_https = request.headers.get("x-forwarded-proto", "").lower() == "https" \
             or request.url.scheme == "https"
         response.set_cookie(
-            COOKIE_NAME, expected, httponly=True, secure=over_https, samesite="lax",
-            max_age=60 * 60 * 24 * 90,
+            COOKIE_NAME, issue_session_cookie(expected), httponly=True,
+            secure=over_https, samesite="lax", max_age=SESSION_TTL_SECONDS,
         )
         return response
-    if expected and not _ct_eq(gamegate_token, expected) and not _ct_eq(key, expected):
+    if expected and not logged_in and not key_ok:
         return HTMLResponse(LOGIN_PAGE, status_code=401)
-    return HTMLResponse(TEMPLATE.read_text())
+    return HTMLResponse(TEMPLATE.read_text(encoding="utf-8"))
+
+
+@router.post("/logout")
+def logout() -> RedirectResponse:
+    """Clear the session cookie for this browser."""
+    response = RedirectResponse("/app", status_code=303)
+    response.delete_cookie(COOKIE_NAME)
+    return response
 
 
 @router.get("/digests", dependencies=[Depends(require_api_token)])
@@ -78,8 +92,11 @@ def digest_history(
 
 
 @router.get("/connections", dependencies=[Depends(require_api_token)])
-def connections() -> dict:
+def connections(
+    settings_service: Annotated[SettingsService, Depends(get_settings_service)],
+) -> dict:
     settings = get_settings()
+    prefs = settings_service.get_all()
     gmail_token = Path(os.environ.get("GMAIL_TOKEN_PATH", "token.json"))
     gmail_client = bool(os.environ.get("GMAIL_OAUTH_CLIENT_ID"))
     gmail_enabled = os.environ.get("GMAIL_ENABLED", "").lower() == "true"
@@ -141,8 +158,10 @@ def connections() -> dict:
         "settings": {
             "Version": __version__,
             "Environment": settings.env,
-            "Urgent break-through while gaming": "on" if settings.urgent_breaks_through_gaming else "off",
-            "VIP senders (Gmail → urgent)": os.environ.get("GMAIL_VIP_SENDERS") or "none configured",
-            "Notification freshness window": "10 minutes",
+            # Read from the DB settings the routing engine actually uses — not
+            # env defaults or hardcoded strings (they drifted from reality).
+            "Urgent break-through while gaming": "on" if prefs["urgent_breakthrough"] else "off",
+            "VIP senders (→ urgent)": ", ".join(prefs["vip_senders"]) or "none configured",
+            "Notification freshness window": f"{prefs['freshness_minutes']} minutes",
         },
     }

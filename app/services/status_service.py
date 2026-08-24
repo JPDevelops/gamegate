@@ -52,12 +52,21 @@ class StatusService:
 
         closed_session = None
         if entering_game:
-            self.session_repo.open(
+            opened = self.session_repo.open(
                 update.application,
                 update.started_at.isoformat() if update.started_at else None,
                 update.app_id,
             )
-            log.info("Gaming session opened (%s)", update.application)
+            if opened:
+                log.info("Gaming session opened (%s)", update.application)
+            else:
+                # open() returns None when a session is already open; don't
+                # swallow it silently (M8) — a stuck-open session would then
+                # record nothing for every later game.
+                log.warning(
+                    "Gaming session NOT opened for %s: a session is already open",
+                    update.application,
+                )
         elif leaving_game:
             closed_session = self.session_repo.close_current()
             if closed_session:

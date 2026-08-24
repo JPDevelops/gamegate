@@ -37,11 +37,35 @@ def service_active(name: str) -> bool | None:
         return None
 
 
-def _systemctl(action: str, unit: str) -> None:
+def _systemctl(action: str, unit: str) -> bool | None:
+    """Run `systemctl <action> <unit>`. Returns True on success, False when it
+    ran but exited non-zero, None when systemd isn't reachable at all (tests/CI).
+    Callers surface False as an error rather than reporting a fake success (M13)."""
     try:
-        subprocess.run(["sudo", "systemctl", action, unit], timeout=20, check=False)
+        result = subprocess.run(
+            ["sudo", "systemctl", action, unit], timeout=20, check=False
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        log.warning("systemctl %s %s failed: %s", action, unit, exc)
+        log.warning("systemctl %s %s could not run: %s", action, unit, exc)
+        return None
+    if result.returncode != 0:
+        log.warning("systemctl %s %s exited %s", action, unit, result.returncode)
+        return False
+    return True
+
+
+def _require_systemctl_ok(action: str, unit: str) -> None:
+    """Raise 502 when systemctl ran and failed; tolerate 'not available'."""
+    if _systemctl(action, unit) is False:
+        raise HTTPException(
+            status_code=502, detail=f"Failed to {action} {unit}; check service logs"
+        )
+
+
+def _env_key(line: str) -> str:
+    """The variable name a .env line defines, ignoring a leading comment marker
+    so a commented-out `# KEY=...` is updated in place instead of duplicated."""
+    return line.split("=", 1)[0].lstrip("#").strip()
 
 
 def update_env_var(key: str, value: str) -> None:
@@ -52,7 +76,7 @@ def update_env_var(key: str, value: str) -> None:
     lines = ENV_PATH.read_text().splitlines()
     replaced = False
     for i, line in enumerate(lines):
-        if line.startswith(f"{key}="):
+        if _env_key(line) == key:
             lines[i] = f"{key}={value}"
             replaced = True
     if not replaced:
@@ -66,10 +90,10 @@ def disconnect(name: str) -> dict:
         token = Path(os.environ.get("GMAIL_TOKEN_PATH", "token.json"))
         token.unlink(missing_ok=True)
         update_env_var("GMAIL_ENABLED", "false")
-        _systemctl("stop", SERVICES["gmail"])
+        _require_systemctl_ok("stop", SERVICES["gmail"])
         return {"disconnected": "gmail"}
     if name == "discord":
-        _systemctl("stop", SERVICES["discord"])
+        _require_systemctl_ok("stop", SERVICES["discord"])
         return {"disconnected": "discord"}
     if name == "classifier":
         update_env_var("CLASSIFIER_ENABLED", "false")
@@ -85,10 +109,10 @@ def connect(name: str) -> dict:
             # Authorization needed first — the UI sends the browser there.
             return {"authorize": "/connect/gmail"}
         update_env_var("GMAIL_ENABLED", "true")
-        _systemctl("start", SERVICES["gmail"])
+        _require_systemctl_ok("start", SERVICES["gmail"])
         return {"connected": "gmail"}
     if name == "discord":
-        _systemctl("start", SERVICES["discord"])
+        _require_systemctl_ok("start", SERVICES["discord"])
         return {"connected": "discord"}
     if name == "classifier":
         update_env_var("CLASSIFIER_ENABLED", "true")

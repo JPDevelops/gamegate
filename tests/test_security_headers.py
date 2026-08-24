@@ -32,6 +32,30 @@ def test_auth_rate_limit_blocks_after_repeated_failures(tmp_path, monkeypatch):
     import pytest  # noqa
 
 
+def test_rate_limited_429_still_carries_security_headers(tmp_path, monkeypatch):
+    """The header middleware must wrap the rate limiter, so even a throttled
+    429 ships CSP + nosniff instead of a bare body (M11)."""
+    from fastapi.testclient import TestClient
+
+    from app import db as db_module
+    from app.config import get_settings
+    from app.main import app
+
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "secret")
+    get_settings.cache_clear()
+    db_module.init_database(str(tmp_path / "t.db"))
+    with TestClient(app) as c:
+        r = None
+        for _ in range(14):
+            r = c.post("/events", json={})
+            if r.status_code == 429:
+                break
+        assert r.status_code == 429
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
+        assert "Content-Security-Policy" in r.headers
+    get_settings.cache_clear()
+
+
 def test_rate_limit_uses_last_xff_hop_not_spoofable(tmp_path, monkeypatch):
     """XFF spoof must NOT grant fresh quota: identity is the last (nginx) hop."""
     from fastapi.testclient import TestClient

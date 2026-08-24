@@ -26,11 +26,21 @@ def test_app_without_key_or_cookie_shows_login(secured):
 def test_key_exchanges_for_cookie_then_serves_dashboard(secured):
     response = secured.get("/app", params={"key": "dash-secret"}, follow_redirects=False)
     assert response.status_code == 303
-    assert "gamegate_token=dash-secret" in response.headers["set-cookie"]
+    set_cookie = response.headers["set-cookie"]
+    assert "gamegate_token=" in set_cookie and "HttpOnly" in set_cookie
+    # The cookie is a signed session token, NOT the raw master token (M9).
+    assert "dash-secret" not in set_cookie
     # cookie persists on the client; the follow-up serves the page
     page = secured.get("/app")
     assert page.status_code == 200
     assert "GAMEGATE" in page.text
+
+
+def test_logout_clears_cookie_and_relocks(secured):
+    secured.get("/app", params={"key": "dash-secret"}, follow_redirects=False)
+    assert secured.get("/events").status_code == 200  # logged in via cookie
+    secured.post("/logout", follow_redirects=False)
+    assert secured.get("/app").status_code == 401  # cookie cleared → locked again
 
 
 def test_cookie_authenticates_data_endpoints(secured):

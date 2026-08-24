@@ -58,5 +58,9 @@ class IngestService:
             decision = Decision.QUEUE
         event, created = self.events.add(incoming, decision.value)
         if created and decision == Decision.DELIVER_NOW:
+            # Queue the notification FIRST, then mark the event consumed. If we
+            # die between these, the event is still delivered=0 and lands in the
+            # digest (at-worst a duplicate, never a lost message — M6).
             self.notifications.add(event.id)
+            self.events.mark_consumed(event.id)
         return event, created, decision
