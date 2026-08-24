@@ -15,3 +15,13 @@ Standing controls already in force: production refuses to start without a token;
 data endpoints authenticated; least-privilege API scopes per integration; secrets
 gitignored + full-history scan clean; UMask=0077 units; owner-only bot commands;
 fail-closed Discord config; logs carry no bodies or secrets.
+
+
+## Branch protection (added 2026-08-24)
+
+**Requested by the Product Owner; configured intent documented, not enforced.**
+GitHub gates branch protection behind Pro or a public repo; this repo is
+private + free. Intended rule for `main` when the repo goes public or Pro:
+require the `test` status check to pass and a PR before merge (no direct
+pushes). Command ready: `gh api -X PUT repos/JPDevelops/gamegate/branches/main/protection ...`
+with required_status_checks.contexts=["test"].
