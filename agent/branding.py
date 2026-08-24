@@ -2,7 +2,9 @@
 
 Everything is rendered supersampled (4x) and downscaled with Lanczos so it
 stays crisp at any tray/taskbar size — the fix for the 'not HD' tray dot.
-Design: dark rounded badge, purple portal ring, state-colored core.
+Design: dark rounded badge, green signal ring, state-colored core. The same
+render backs the tray badge AND the .exe icon, so regenerating this keeps the
+taskbar icon in sync with the tray (run `python branding.py` after any change).
 """
 
 SUPERSAMPLE = 4
