@@ -81,6 +81,10 @@ class SettingsService:
         if kind == "list":
             if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
                 raise ValueError(f"{key} must be a list of strings")
+            if len(value) > 200:
+                raise ValueError(f"{key} is limited to 200 entries")
+            if any(len(x) > 200 for x in value):
+                raise ValueError(f"{key} entries are limited to 200 characters")
             cleaned = [x.strip() for x in value if x.strip()]
             if key == "vip_senders":
                 cleaned = [normalize_sender(x) for x in cleaned]
