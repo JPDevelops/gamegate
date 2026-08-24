@@ -55,6 +55,24 @@ def test_keyless_dashboard_views_do_not_lock_out_the_owner(tmp_path, monkeypatch
     get_settings.cache_clear()
 
 
+def test_bad_ticket_guesses_are_rate_limited(tmp_path, monkeypatch):
+    """LOW: a ?ticket= guess IS a credential attempt and must count toward the
+    throttle — the keyless-login-page exemption must not also cover it."""
+    from fastapi.testclient import TestClient
+
+    from app import db as db_module
+    from app.config import get_settings
+    from app.main import app
+
+    monkeypatch.setenv("GAMEGATE_API_TOKEN", "secret")
+    get_settings.cache_clear()
+    db_module.init_database(str(tmp_path / "t.db"))
+    with TestClient(app) as c:
+        codes = [c.get("/app", params={"ticket": f"guess-{i}"}).status_code for i in range(12)]
+        assert 429 in codes
+    get_settings.cache_clear()
+
+
 def test_xff_only_trusted_from_local_proxy():
     """X-Forwarded-For is honored only when the peer is our loopback proxy;
     a direct caller cannot mint identities or frame a victim via XFF (M3)."""

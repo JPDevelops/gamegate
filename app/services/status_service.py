@@ -55,7 +55,7 @@ class StatusService:
         """Dashboard 'Do Not Disturb' — a manual override the detector can't
         overwrite. Turning it ON closes any open gaming session (you get the
         recap for what you played, then nothing new is cut while focused);
-        turning it OFF resumes detector control on the next poll."""
+        turning it OFF re-opens a session if you're still detected as gaming."""
         if enabled:
             self.status_repo.set_override(AvailabilityState.FOCUSED.value)
             current = self.session_repo.current()
@@ -63,9 +63,26 @@ class StatusService:
             log.info("DND override enabled (dashboard)")
             return self.status_repo.get(), closed
         self.status_repo.set_override(None)
-        log.info("DND override cleared (dashboard); detector resumes on next poll")
-        # Don't retro-open a session here (we lack the detector's app_id); the
-        # next detector poll self-heals within one interval.
+        # Reconcile HERE, not "on the next detector poll": the real detector only
+        # POSTs on a state/game TRANSITION, so if the same game kept running
+        # through the DND window it will NOT re-announce 'gaming' — leaving the
+        # base state 'gaming' with no open session and the whole post-DND stretch
+        # un-recapped (review MAJOR). The base status row still holds the game's
+        # application/started_at (the detector wrote them while DND was held), so
+        # re-open the session from those.
+        effective = self.status_repo.get()  # override cleared → base state resurfaces
+        if (
+            effective.state == AvailabilityState.GAMING
+            and self.session_repo.current() is None
+        ):
+            self._open_session(StatusUpdate(
+                state=AvailabilityState.GAMING,
+                application=effective.application,
+                started_at=effective.started_at,
+            ))
+            log.info("DND cleared while still gaming — re-opened the session")
+        else:
+            log.info("DND override cleared (dashboard)")
         return self.status_repo.get(), None
 
     def _reconcile_sessions(

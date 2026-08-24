@@ -181,14 +181,6 @@ class StatusRepository:
             manual_override=override is not None,
         )
 
-    def base_state(self) -> str:
-        """The detector-driven state underneath any override (for reconciling
-        sessions when DND clears). AVAILABLE if no row yet."""
-        row = self.db.connection().execute(
-            "SELECT state FROM status WHERE id = 1"
-        ).fetchone()
-        return row["state"] if row else AvailabilityState.AVAILABLE.value
-
     def set(self, update: StatusUpdate) -> StatusResponse:
         conn = self.db.connection()
         with conn:

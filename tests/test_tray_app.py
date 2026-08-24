@@ -21,6 +21,7 @@ class FakeApi:
         self.acked = []
         self.abandoned = []
         self.statuses = []
+        self.dnd_calls = []
 
     def pending_notifications(self):
         return list(self.notifications)
@@ -50,6 +51,10 @@ class FakeApi:
 
     def post_status(self, state, application, started_at):
         self.statuses.append(state)
+        return True
+
+    def set_dnd(self, enabled):
+        self.dnd_calls.append(enabled)
         return True
 
     def client_settings(self):
@@ -116,30 +121,21 @@ def test_pump_display_failure_drops_after_max_attempts():
     assert "n1" in pump._given_up
 
 
-def test_dnd_toggle_posts_focused_then_available():
+def test_dnd_toggle_uses_the_authoritative_dnd_endpoint():
+    """The tray DND now drives the SAME server-side override the dashboard uses
+    (POST /status/dnd), instead of posting focused/available as a base state —
+    so the two DND surfaces agree (review: two divergent DND mechanisms)."""
     api = FakeApi()
     dnd = DndController(api)
     assert dnd.toggle() is True
     assert dnd.toggle() is False
-    assert api.statuses == ["focused", "available"]
-
-
-def test_dnd_pauses_and_resyncs_detector():
-    class FakeDetector:
-        last_reported_state = "available"
-
-    api = FakeApi()
-    detector = FakeDetector()
-    dnd = DndController(api, detector)
-    assert dnd.toggle() is True          # DND on — detector loop will pause
-    assert detector.last_reported_state == "available"  # untouched while on
-    assert dnd.toggle() is False         # DND off
-    assert detector.last_reported_state is None  # forced re-sync next poll
+    assert api.dnd_calls == [True, False]     # /status/dnd enabled then disabled
+    assert api.statuses == []                 # no base-state focused/available posts
 
 
 def test_dnd_stays_off_if_api_down():
     class DownApi(FakeApi):
-        def post_status(self, *args):
+        def set_dnd(self, enabled):
             return False
 
     dnd = DndController(DownApi())

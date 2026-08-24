@@ -256,15 +256,24 @@ class ApiClient:
         self, state: str, application: str | None, started_at: str | None,
         app_id: str | None = None,
     ) -> bool:
-        body = json.dumps(
-            {"state": state, "application": application, "started_at": started_at,
-             "app_id": app_id}
-        ).encode()
+        return self._post_json("/status", {
+            "state": state, "application": application,
+            "started_at": started_at, "app_id": app_id,
+        })
+
+    def set_dnd(self, enabled: bool) -> bool:
+        """Toggle the server-side DND override (POST /status/dnd) — the
+        dashboard-authoritative endpoint, so tray and dashboard DND agree and the
+        detector can't clobber it (review: two divergent DND mechanisms)."""
+        return self._post_json("/status/dnd", {"enabled": enabled})
+
+    def _post_json(self, path: str, payload: dict) -> bool:
+        body = json.dumps(payload).encode()
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["X-GameGate-Token"] = self.token
         request = urllib.request.Request(
-            f"{self.base_url}/status", data=body, headers=headers, method="POST"
+            f"{self.base_url}{path}", data=body, headers=headers, method="POST"
         )
         try:
             with urllib.request.urlopen(request, timeout=10) as response:

@@ -28,7 +28,13 @@ from fastapi import Cookie, Header, HTTPException
 from app.config import get_settings
 
 COOKIE_NAME = "gamegate_token"
-SESSION_TTL_SECONDS = 60 * 60 * 24 * 90  # 90 days
+# 14 days, not 90: the cookie is a stateless bearer with no server-side
+# revocation (logout only clears the browser copy), so a shorter life bounds the
+# window a leaked cookie stays valid (review: 90-day session too long). The
+# desktop app mints a fresh login ticket every time it opens the dashboard, so a
+# shorter TTL costs the owner nothing in practice. Rotating GAMEGATE_API_TOKEN
+# still invalidates every outstanding cookie immediately.
+SESSION_TTL_SECONDS = 60 * 60 * 24 * 14  # 14 days
 
 
 def constant_time_equals(a: str | None, b: str | None) -> bool:

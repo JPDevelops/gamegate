@@ -205,7 +205,7 @@ the Claude reviewer's only MAJOR was the already-known/deferred Tkinter threadin
 **Still deferred (need the owner, Windows, or a dedicated PR):**
 | Item | Why | Needs |
 |---|---|---|
-| ~~Dashboard-DND vs detector state machine~~ | **DONE (owner chose: dashboard wins).** DND is now a persisted `override_state` distinct from the detector's `state`; `POST /status/dnd` sets it, a detector `POST /status` can't clear it or drive sessions while it's held, and `GET /status` reports the override as the effective state with a `manual_override` flag. Turning DND on mid-game recaps that game; off hands control back on the next poll. The one remaining piece is unifying the *tray app's* own DND button onto the same endpoint — a Windows-side change. | Tray-side unification (Windows) |
+| ~~Dashboard-DND vs detector state machine~~ | **DONE (owner chose: dashboard wins), in two parts.** DND is a persisted `override_state` distinct from the detector's `state`; `POST /status/dnd` sets it, a detector `POST /status` can't clear it or drive sessions while held, and `GET /status` reports the override as the effective state with a `manual_override` flag. **Correction (round 10):** the first cut claimed "off hands control back on the next poll" — that was wrong, because the real detector only POSTs on a *transition*, so a game still running across the DND window never re-announces itself and the post-DND stretch was silently lost. `set_dnd(False)` now re-opens the session itself when the base state is still `gaming`, and a regression test proves it WITHOUT a detector re-post. The tray app's own DND button was also migrated onto `/status/dnd`. | — |
 | Tkinter single-UI-thread refactor | Windows-only, not CI-testable | Windows pass |
 | Signed/hash-verified release updater | Source updater is a dev convenience today | Release-signing work |
 | Dependency lockfile + SHA-pinned actions | Changes the CI pipeline | Dedicated CI PR (gitleaks download already checksum-pinned) |
@@ -213,3 +213,51 @@ the Claude reviewer's only MAJOR was the already-known/deferred Tkinter threadin
 | Connector heartbeats (live health) | New persisted state + UI | Feature PR (limitation now documented) |
 | One-time dashboard login ticket | Removes the token from the `?key=` URL | Auth change (caveat documented) |
 | Poison-item server-side dead-letter | 200 given-up items could block newer pending | Server + desktop change |
+
+## Review round 10 — Claude critic + OpenAI white-hat pentest — 2026-08-24
+
+A fresh Claude senior-engineer critic (pointed at the newest DND/ticket/dead-
+letter/heartbeat code) and an OpenAI agent running an adversarial white-hat
+pentest. **Pentest verdict: no critical exploit, no unauthenticated remote
+takeover, and no SQLi / SSRF / path-traversal / cookie-forgery / OAuth-takeover.**
+The Claude critic returned 0 blockers, 1 major, 3 minor, 5 nitpick.
+
+**Fixed this round:**
+- **DND-off recap loss (MAJOR — and a false "DONE" I had to walk back).** The
+  first DND cut claimed "off hands control back on the next poll", but the real
+  detector only POSTs on a *transition*, so a game still running across the DND
+  window never re-announced itself and the whole post-DND stretch was silently
+  un-recapped. `set_dnd(False)` now re-opens the session itself from the stored
+  base state; a regression test proves it WITHOUT a detector re-post (the old
+  test masked the bug by manually re-POSTing). Removed the dead `base_state()`
+  helper that was written for this and never wired up.
+- **Tray DND unified onto `/status/dnd`** — the button users actually click now
+  drives the same server-side override as the dashboard (no more posting
+  focused/available as a base state, no detector-pausing hack).
+- **Heartbeat can now detect a *silent* death** (crash/OOM), not just an error:
+  a connector that stops beating for >5 min shows `degraded/stale`; added a
+  periodic Discord heartbeat so its freshness is meaningful.
+- **Pentest fixes:** `/ready` returns a fixed public body (no raw DB exception
+  text); `?ticket=` guesses now count toward the auth throttle (the keyless-
+  login exemption no longer covers them); the heartbeat endpoint rejects unknown
+  connector names; the dashboard session TTL dropped 90d → 14d; `/docs` is now
+  gated on *explicit* dev (a bare production run no longer exposes the inventory);
+  **PKCE (S256)** added to the Gmail OAuth flow; extra systemd hardening on all
+  three units (`PrivateDevices`, `ProtectKernelModules/Logs`, `ProtectClock`,
+  `LockPersonality`, `RestrictNamespaces/Realtime`, `RestrictAddressFamilies`,
+  `SystemCallArchitectures=native`).
+- **Nitpicks:** `/data/clear` now also resets `override_state`; docs "7 → 8
+  persisted stores"; ARCHITECTURE Slack "v0.1" label; classifier default model
+  id set to a real model (`gpt-4o-mini`). The pentest's "missing .gitignore" was
+  a bundler false-positive — `.gitignore` exists and `git check-ignore` confirms
+  `.env`, `token.json`, and `agent/config.json` are all ignored.
+
+**Accepted / deferred with reasons (documented single-user tradeoffs, not bugs):**
+| Pentest finding | Disposition |
+|---|---|
+| HIGH: one shared, unscoped master token (a local foothold = owner access) | Accepted single-user tradeoff (SECURITY_DISPOSITIONS #27/#45). Per-component OAuth-style scopes are a real feature, unwarranted while every component runs as one user on one host; revisit at multi-user/multi-host. |
+| MEDIUM: stateless 90-day cookie, logout doesn't revoke | Partly fixed (TTL 90d→14d; token rotation already invalidates all cookies). Full server-side revocable sessions are a follow-up. |
+| MEDIUM: `?key=` still supported + desktop fallback | The desktop already *prefers* the one-time ticket; `?key=` remains for the shareable DM link (single-user, HTTPS, logs scrubbed). Removing it entirely is a follow-up. |
+| HIGH: unsigned `git pull` updater / unpinned release deps | Needs a code-signing cert and a Windows-verified lockfile; documented in ROADMAP. CI actions are SHA-pinned and the gitleaks download is checksum-verified. |
+| MEDIUM: services share a user/.env; ReadWritePaths = whole checkout | Added the safe extra sandboxing above. Separate users + narrowed writable paths need relocating writable state (`.env` lock/tmp, `token.json`, DB) into a dedicated dir — an ops change to verify live; documented follow-up. |
+| MEDIUM: no CSRF token; SameSite=lax only | The pentester did NOT confirm conventional CSRF (SameSite=lax blocks the cross-site POST) for this single-host deployment; an Origin/CSRF token is defense-in-depth for a future shared-domain deployment. |

@@ -120,7 +120,9 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         # owner lock their own IP by refreshing a bookmarked /app (review MINOR).
         # Only an actual ?key= attempt on /app is a guess worth throttling.
         is_login_page_view = (
-            request.url.path == "/app" and "key" not in request.query_params
+            request.url.path == "/app"
+            and "key" not in request.query_params
+            and "ticket" not in request.query_params  # a ?ticket= guess IS an attempt
         )
         if response.status_code == 401 and not is_login_page_view:
             fails = self._failures[ip]

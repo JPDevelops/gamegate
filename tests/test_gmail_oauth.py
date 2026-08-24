@@ -47,7 +47,8 @@ def test_callback_rejects_expired_state(client, oauth_env):
     import time
 
     state = "expired-state-token"
-    gmail_oauth._pending_states[state] = time.time() - 1  # already past its TTL
+    # value is (expiry, pkce_verifier); expiry already past its TTL
+    gmail_oauth._pending_states[state] = (time.time() - 1, "verifier-xyz")
     response = client.get("/oauth/gmail/callback", params={"code": "x", "state": state})
     assert response.status_code == 400
     assert "expired" in response.json()["detail"].lower()
@@ -81,12 +82,17 @@ def test_exchange_code_provider_error_is_502():
 
 
 def test_callback_exchanges_and_stores_token(client, oauth_env, monkeypatch):
-    monkeypatch.setattr(
-        gmail_oauth, "exchange_code",
-        lambda code, cid, cs, ru, http=None: {"access_token": "at-1", "refresh_token": "rt-1"},
-    )
-    # issue a real state via the connect endpoint
-    client.get("/connect/gmail", follow_redirects=False)
+    captured = {}
+
+    def fake_exchange(code, cid, cs, ru, http=None, code_verifier=None):
+        captured["verifier"] = code_verifier  # PKCE verifier must be passed through
+        return {"access_token": "at-1", "refresh_token": "rt-1"}
+
+    monkeypatch.setattr(gmail_oauth, "exchange_code", fake_exchange)
+    # issue a real state via the connect endpoint (also mints the PKCE verifier)
+    redirect = client.get("/connect/gmail", follow_redirects=False)
+    assert "code_challenge=" in redirect.headers["location"]  # PKCE challenge sent
+    assert "code_challenge_method=S256" in redirect.headers["location"]
     state = next(iter(gmail_oauth._pending_states))
 
     response = client.get("/oauth/gmail/callback", params={"code": "authcode", "state": state})
@@ -97,6 +103,7 @@ def test_callback_exchanges_and_stores_token(client, oauth_env, monkeypatch):
     assert token["refresh_token"] == "rt-1"
     assert token["client_id"] == "cid-123"
     assert token["scopes"] == [gmail_oauth.SCOPE]
+    assert captured["verifier"]  # the stored PKCE verifier reached the exchange
     # state is single-use
     assert client.get(
         "/oauth/gmail/callback", params={"code": "authcode", "state": state}

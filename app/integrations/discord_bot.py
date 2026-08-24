@@ -57,6 +57,16 @@ def build_client() -> discord.Client:
     no_mentions = discord.AllowedMentions.none()
     pump_started = {"done": False}
 
+    heartbeat_started = {"done": False}
+
+    async def _heartbeat_loop():
+        # Beat every 60s while connected so the dashboard's staleness check is
+        # meaningful — a crashed/disconnected bot stops beating and shows
+        # 'degraded' instead of a permanent green (review MINOR: silent death).
+        while True:
+            await asyncio.to_thread(api.heartbeat, "discord", True)
+            await asyncio.sleep(60)
+
     @client.event
     async def on_ready():
         log.info("Connected as %s", client.user)
@@ -64,6 +74,9 @@ def build_client() -> discord.Client:
         # so the dashboard can show 'connected' as actually-connected, not just a
         # flag (review MAJOR). A rejected token never gets here, so it stays stale.
         await asyncio.to_thread(api.heartbeat, "discord", True)
+        if not heartbeat_started["done"]:
+            heartbeat_started["done"] = True
+            client.loop.create_task(_heartbeat_loop())
         # Delivery is the desktop app's job (PO decision 2026-08-23); this pump
         # only runs if explicitly re-enabled. on_ready fires again after
         # reconnects — one pump only.

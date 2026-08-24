@@ -85,7 +85,7 @@ class OpenAIClassifier:
         client: httpx.Client | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
-        self.model = model or os.environ.get("CLASSIFIER_MODEL", "gpt-5-mini")
+        self.model = model or os.environ.get("CLASSIFIER_MODEL", "gpt-4o-mini")
         self.client = client or httpx.Client(timeout=timeout)
 
     def classify(self, event: Event) -> Classification:
