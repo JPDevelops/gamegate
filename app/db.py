@@ -4,6 +4,7 @@ One Database object per process, initialized at startup (or per-test with a
 temporary path). Repositories receive it explicitly — no hidden globals in the
 data layer itself.
 """
+import os
 import sqlite3
 import threading
 
@@ -73,6 +74,16 @@ class Database:
     def __init__(self, path: str) -> None:
         self.path = path
         self._local = threading.local()
+        with self.connection() as conn:  # creates the file
+            pass
+        # The DB holds message content — lock it to the owner (0600). It was
+        # created world-readable by default umask (review M9). Best-effort:
+        # in-memory / unusual paths may not support chmod.
+        try:
+            if os.path.exists(path):
+                os.chmod(path, 0o600)
+        except OSError:
+            pass
         with self.connection() as conn:
             conn.executescript(SCHEMA)
             # Lightweight migration: columns added after first release. Only
