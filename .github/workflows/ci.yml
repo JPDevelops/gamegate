@@ -14,15 +14,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: "3.12"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest httpx ruff
+          # Pin the test/lint toolchain so a new pytest/ruff release can't turn
+          # this check red (or green) for the same commit (review: reproducibility).
+          pip install pytest==9.1.1 httpx==0.28.1 ruff==0.16.4
       - name: Lint
         run: ruff check app tests agent
       - name: Test
@@ -33,7 +35,7 @@ jobs:
     # runs on every push and PR (review MAJOR: unverifiable security claims).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0   # full history so the scan covers every commit, all branches
       - name: Install gitleaks
