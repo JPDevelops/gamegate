@@ -53,6 +53,14 @@ async def lifespan(app: FastAPI):
         _gmail_configure(_addr, _pw, _ss.get_all()["gmail_enabled"])
     except Exception:  # noqa: BLE001
         logging.getLogger("gamegate").exception("Gmail IMAP poller failed to start")
+    # Re-apply "silence duplicate pop-ups" on startup so the native banners for
+    # GameGate's messaging apps stay muted across restarts (and any newly-seen
+    # app gets muted too). Best-effort, Windows-only.
+    try:
+        from app.services.notification_banners import apply as _apply_banners
+        _apply_banners(_ss.get_all()["suppress_source_banners"])
+    except Exception:  # noqa: BLE001
+        logging.getLogger("gamegate").exception("Banner suppression apply failed")
     from app.middleware import reset_rate_limits
     reset_rate_limits()
     yield

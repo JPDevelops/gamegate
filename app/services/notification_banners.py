@@ -1,0 +1,82 @@
+"""Silence the native pop-up banner for the messaging apps GameGate surfaces, so
+the user isn't pinged twice — once by the app, once by GameGate.
+
+The key fact (verified): setting the per-app `ShowBanner=0` DWORD hides the toast
+banner, but the notification is STILL filed in the Windows notification center —
+i.e. still written to wpndatabase.db, which is exactly where GameGate reads from.
+So muting the banner does NOT blind GameGate: it keeps capturing, and it becomes
+the single surface for those apps.
+
+Per-user registry (no admin needed):
+  HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings\\<AUMID>
+
+Everything here is win32-guarded: off Windows every entry point is a no-op that
+returns [], so the server package stays import-safe and unit-testable on any OS.
+Only ShowBanner is touched (0 = muted, 1 = restored) — we never disable the app
+or its Action Center entry, so the change is minimal and fully reversible.
+"""
+import logging
+import sys
+
+log = logging.getLogger("gamegate.banners")
+
+_SETTINGS_KEY = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
+
+# AUMID substrings for the noisy *messaging* apps GameGate itself surfaces. We
+# mute ONLY these; every other app keeps its normal banners. Browsers are left
+# out on purpose — muting them would silence every web notification, not chat.
+MESSAGING_MARKERS = (
+    "discord", "yourphone", "phonelink", "slack", "teams",
+    "whatsapp", "telegram", "outlook", "messenger", "signal",
+)
+
+
+def is_messaging_app(aumid: str) -> bool:
+    """True if this app id is one of the chat/message sources GameGate surfaces —
+    pure and testable (no registry access)."""
+    low = (aumid or "").lower()
+    return any(marker in low for marker in MESSAGING_MARKERS)
+
+
+def _iter_registered_apps():
+    """AUMIDs that have a notification-settings entry (i.e. have notified before)."""
+    import winreg
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _SETTINGS_KEY) as key:
+        index = 0
+        while True:
+            try:
+                yield winreg.EnumKey(key, index)
+            except OSError:
+                return
+            index += 1
+
+
+def _set_banner(aumid: str, show: bool) -> None:
+    import winreg
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _SETTINGS_KEY + "\\" + aumid) as sub:
+        winreg.SetValueEx(sub, "ShowBanner", 0, winreg.REG_DWORD, 1 if show else 0)
+
+
+def apply(enabled: bool) -> list[str]:
+    """Mute (enabled=True) or restore (False) the pop-up banner for every
+    registered messaging app GameGate recognizes. Returns the AUMIDs touched.
+    No-op returning [] off Windows or if the registry can't be read/written."""
+    if sys.platform != "win32":
+        return []
+    try:
+        apps = [a for a in _iter_registered_apps() if is_messaging_app(a)]
+    except OSError as exc:  # key missing / access — nothing to do
+        log.warning("Couldn't enumerate notification apps: %s", exc)
+        return []
+    touched: list[str] = []
+    for aumid in apps:
+        try:
+            _set_banner(aumid, show=not enabled)
+            touched.append(aumid)
+        except OSError as exc:
+            log.warning("Couldn't set banner for %s: %s", aumid, exc)
+    log.info("Source-banner suppression %s for %d app(s): %s",
+             "ON" if enabled else "off", len(touched), ", ".join(touched) or "(none)")
+    return touched

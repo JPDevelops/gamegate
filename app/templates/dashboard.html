@@ -434,6 +434,9 @@ const views = {
       ${sw("urgent_breakthrough", "Urgent break-through while gaming",
            "Truly urgent messages pop the overlay mid-game. Off = everything waits for the recap.")}
       ${sw("notification_sound", "Notification sound", "Play a sound when the overlay appears.")}
+      <div class="setrow"><div class="lbl"><div>Silence duplicate pop-ups</div>
+        <div class="muted">Mute Windows' own banners for the apps GameGate watches (Discord, texts, …) so you're pinged once — by GameGate — not twice. They're still captured; only the native pop-up is muted.</div></div>
+        <div class="switch ${s.suppress_source_banners ? "on" : ""}" onclick="setBannerSuppress(${!s.suppress_source_banners})"></div></div>
       <div class="setrow"><div class="lbl"><div>Overlay duration</div>
         <div class="muted">Seconds the card stays on screen (4–20).</div></div>
         <input class="setinput num" type="number" min="4" max="20" value="${s.overlay_duration_s}"
@@ -475,6 +478,14 @@ async function setSetting(key, value) {
   const r = await fetch("/settings", { method: "PUT",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) });
   if (!r.ok) { const b = await r.json().catch(() => ({})); alert(b.detail || "Invalid value"); }
+  await refresh(); route();
+}
+// "Silence duplicate pop-ups" — dedicated endpoint (not a plain setting) because
+// it also mutes/restores the native Windows banners for GameGate's messaging apps.
+async function setBannerSuppress(on) {
+  const r = await fetch("/settings/notifications-suppress", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on }) });
+  if (!r.ok) alert("Couldn't update that.");
   await refresh(); route();
 }
 async function toggleDnd() {
