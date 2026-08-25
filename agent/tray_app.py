@@ -646,9 +646,33 @@ def run_tray() -> None:
                 log.exception("Update check failed")
             stop.wait(3600)  # check hourly
 
+    def auto_update_loop():
+        """Downloaded/installed builds self-update from GitHub Releases: check on
+        startup, then periodically. When a newer version is applied, quit so the
+        running exe is released and the swap can relaunch the new one."""
+        from updater import check_and_update
+        update_status["count"] = 0  # auto-update handles it → tray shows "Latest version"
+        with contextlib.suppress(Exception):
+            icon.update_menu()
+        stop.wait(15)  # let the app settle before touching the network
+        while not stop.is_set():
+            try:
+                if check_and_update():
+                    log.info("Update downloaded — restarting to apply")
+                    stop.set()
+                    icon.stop()
+                    return
+            except Exception:
+                log.exception("Auto-update check failed")
+            stop.wait(6 * 3600)  # re-check every 6 hours
+
     threading.Thread(target=detector_loop, daemon=True).start()
     threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
-    threading.Thread(target=update_check_loop, daemon=True).start()
+    if getattr(sys, "frozen", False):
+        threading.Thread(target=auto_update_loop, daemon=True).start()
+    else:
+        # Source checkout: the git-based updater + tray "Update" menu item.
+        threading.Thread(target=update_check_loop, daemon=True).start()
     # First-run consent for the Windows notification catch-all — ask once, and
     # flip the setting on ourselves if the user says yes (no config editing).
     # We read notifications straight from the Windows notification database, so
@@ -701,6 +725,12 @@ def _setup_logging() -> None:
 
 if __name__ == "__main__":
     _setup_logging()
+    if "--apply-update" in sys.argv:
+        # Launched by the auto-updater from the freshly-downloaded exe: replace
+        # the installed exe and relaunch it. No tray, no lock, no server.
+        from updater import apply_update_mode
+        apply_update_mode()
+        raise SystemExit(0)
     enable_dpi_awareness()
     if "--window" in sys.argv:
         log.info("window process starting")

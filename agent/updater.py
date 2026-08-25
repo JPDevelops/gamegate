@@ -1,0 +1,122 @@
+"""In-app auto-updater for the downloaded/installed GameGate.exe.
+
+The old updater (update.ps1 / git pull) only works for a source checkout. A
+downloaded exe has no git repo, so this checks the GitHub Releases API for a
+newer version, downloads the new GameGate.exe, and swaps it in — the way Discord
+et al. update themselves.
+
+Self-replace trick: a running .exe can't overwrite itself. So we launch the
+freshly-downloaded exe in "--apply-update" mode; it waits for this process to
+exit, copies itself over the installed exe, and relaunches it. Per-user install
+(%LOCALAPPDATA%\\Programs\\GameGate) means no admin is needed to replace the file.
+"""
+import contextlib
+import json
+import logging
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+log = logging.getLogger("gamegate.updater")
+
+# Bumped every release; the tag on GitHub (vX.Y.Z) is compared against this.
+AGENT_VERSION = "0.3.1"
+
+REPO = "JPDevelops/gamegate"
+LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
+_ASSET_NAME = "GameGate.exe"
+_UA = {"User-Agent": "GameGate-Updater"}
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def parse_version(text: str) -> tuple:
+    """'v0.3.10' -> (0, 3, 10). Non-numeric parts become 0; missing -> (0,)."""
+    core = (text or "").strip().lstrip("vV").split("-")[0].split("+")[0]
+    out = []
+    for part in core.split("."):
+        try:
+            out.append(int(part))
+        except ValueError:
+            out.append(0)
+    return tuple(out) or (0,)
+
+
+def latest_release() -> tuple[str, str] | None:
+    """(tag, GameGate.exe download URL) for the newest release, or None."""
+    headers = {**_UA, "Accept": "application/vnd.github+json"}
+    with urllib.request.urlopen(
+        urllib.request.Request(LATEST_API, headers=headers), timeout=15
+    ) as resp:
+        data = json.loads(resp.read())
+    tag = data.get("tag_name") or ""
+    url = next(
+        (a.get("browser_download_url") for a in data.get("assets", [])
+         if a.get("name") == _ASSET_NAME),
+        None,
+    )
+    return (tag, url) if tag and url else None
+
+
+def check_and_update(current: str = AGENT_VERSION) -> bool:
+    """Check once; if a newer release exists, download it and launch the swap.
+    Returns True if an update is being applied (caller should then quit so the
+    running exe is released). Safe/no-op on any error or for a non-frozen run."""
+    if not getattr(sys, "frozen", False):
+        return False  # dev/source run — the git updater handles that
+    try:
+        info = latest_release()
+        if not info:
+            return False
+        tag, url = info
+        if parse_version(tag) <= parse_version(current):
+            log.info("GameGate is up to date (have %s, latest %s)", current, tag)
+            return False
+        log.info("Update available %s -> %s; downloading", current, tag)
+        return _download_and_launch_swap(url)
+    except Exception:  # noqa: BLE001 — an update failure must never crash the app
+        log.exception("Update check failed")
+        return False
+
+
+def _download_and_launch_swap(url: str) -> bool:
+    target = Path(sys.executable)          # the installed GameGate.exe to replace
+    tmp = Path(tempfile.mkdtemp(prefix="gg_update_")) / "GameGate-new.exe"
+    req = urllib.request.Request(url, headers=_UA)
+    with urllib.request.urlopen(req, timeout=300) as resp, open(tmp, "wb") as fh:
+        shutil.copyfileobj(resp, fh)
+    if tmp.stat().st_size < 1_000_000:     # sanity: a real build is tens of MB
+        log.error("Downloaded update is implausibly small (%d bytes); aborting", tmp.stat().st_size)
+        return False
+    log.info("Update downloaded; launching swap into %s", target)
+    subprocess.Popen(
+        [str(tmp), "--apply-update", str(target), "--pid", str(os.getpid())],
+        creationflags=_NO_WINDOW, close_fds=True,
+    )
+    return True
+
+
+def apply_update_mode() -> None:
+    """Entry point when GameGate is launched with --apply-update <target>.
+    Runs from the freshly-downloaded exe: wait for the old process to exit, copy
+    self over the installed exe, relaunch it, then exit."""
+    argv = sys.argv
+    target = argv[argv.index("--apply-update") + 1]
+    time.sleep(2)  # give the old process a moment to fully exit and release the file
+    src = sys.executable
+    for _ in range(60):  # up to ~30s, retry while the old exe is still locked
+        try:
+            shutil.copyfile(src, target)
+            break
+        except OSError:
+            time.sleep(0.5)
+    else:
+        log.error("Could not replace %s (still locked)", target)
+        return
+    log.info("Update applied; relaunching %s", target)
+    with contextlib.suppress(OSError):
+        subprocess.Popen([target], creationflags=_NO_WINDOW, close_fds=True)
