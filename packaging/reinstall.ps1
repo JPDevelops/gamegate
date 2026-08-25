@@ -25,7 +25,10 @@ param([string]$Msix = "packaging\out\GameGate.msix")
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
 Info "Closing any running GameGate..."
-taskkill /F /IM GameGate.exe 2>$null | Out-Null
+# Get-Process|Stop-Process (not taskkill) so it never throws when GameGate isn't
+# running — taskkill writes "not found" to stderr, which becomes a TERMINATING
+# error when this script is called from one that set $ErrorActionPreference=Stop.
+Get-Process GameGate -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 
 Info "Removing any installed GameGate package..."

@@ -24,7 +24,9 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 Info "Closing any running GameGate..."
-taskkill /F /IM GameGate.exe 2>$null | Out-Null
+# Native taskkill writes to stderr when nothing matches, which $ErrorActionPreference=Stop
+# turns into a terminating error — use the PowerShell-native stop, which never throws.
+Get-Process GameGate -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 Info "Pulling latest source..."
 git pull
