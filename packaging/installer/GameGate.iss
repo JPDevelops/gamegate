@@ -11,6 +11,8 @@
 ; NOTE: with the free self-signed cert the user still sees ONE Windows elevation
 ; prompt (UAC) and possibly a SmartScreen "More info -> Run anyway". A paid
 ; code-signing certificate is the only way to remove those entirely.
+;
+; Inno Setup entries are ONE LINE each (no line-continuation) — keep them long.
 
 #define AppName "GameGate"
 #define AppVersion "0.2.4.0"
@@ -37,29 +39,17 @@ UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\gamegate.ico
 
 [Messages]
-WelcomeLabel2=This installs GameGate on your computer.%n%nGameGate holds your notifications while you game and hands you one clean recap after. It runs entirely on this PC — no account, no server to set up.
+WelcomeLabel2=This installs GameGate on your computer.%n%nGameGate holds your notifications while you game and hands you one clean recap after. It runs entirely on this PC - no account, no server to set up.
 
 [Files]
-Source: "..\out\GameGate.msix";         DestDir: "{tmp}"; Flags: deleteafterinstall
-Source: "..\out\GameGate-DevCert.cer";  DestDir: "{tmp}"; Flags: deleteafterinstall
-Source: "..\..\agent\gamegate.ico";     DestDir: "{app}"; Flags: ignoreversion
+Source: "..\out\GameGate.msix"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "..\out\GameGate-DevCert.cer"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "..\..\agent\gamegate.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
-; 1) Trust the publisher certificate so Windows will accept the package.
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Import-Certificate -FilePath '{tmp}\GameGate-DevCert.cer' -CertStoreLocation Cert:\LocalMachine\TrustedPeople"""; \
-  StatusMsg: "Trusting the GameGate certificate..."; Flags: runhidden waituntilterminated
-
-; 2) Install the app package.
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Add-AppxPackage -Path '{tmp}\GameGate.msix' -ForceUpdateFromAnyVersion"""; \
-  StatusMsg: "Installing GameGate..."; Flags: runhidden waituntilterminated
-
-; 3) Offer to launch it (checkbox on the finish page).
-Filename: "explorer.exe"; Parameters: "shell:AppsFolder\{#Aumid}"; \
-  Description: "Launch GameGate now"; Flags: postinstall nowait skipifsilent
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Import-Certificate -FilePath '{tmp}\GameGate-DevCert.cer' -CertStoreLocation Cert:\LocalMachine\TrustedPeople"""; StatusMsg: "Trusting the GameGate certificate..."; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Add-AppxPackage -Path '{tmp}\GameGate.msix' -ForceUpdateFromAnyVersion"""; StatusMsg: "Installing GameGate..."; Flags: runhidden waituntilterminated
+Filename: "explorer.exe"; Parameters: "shell:AppsFolder\{#Aumid}"; Description: "Launch GameGate now"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-AppxPackage -Name JPDevelops.GameGate | Remove-AppxPackage"""; \
-  Flags: runhidden; RunOnceId: "RemoveGameGateAppx"
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-AppxPackage -Name JPDevelops.GameGate | Remove-AppxPackage"""; Flags: runhidden; RunOnceId: "RemoveGameGateAppx"
