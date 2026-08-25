@@ -722,36 +722,69 @@ function showTextSyncWizard(startStep) {
   }
 
   function step2() {
-    const body = phone === "ios"
-      ? `Phone Link is already on this PC. We'll open it — choose <b>iPhone</b>, then pair over Bluetooth and say yes when your iPhone asks to share notifications and messages.<br><br>Leave this window open. Come back when Phone Link says your iPhone is connected.`
-      : `Phone Link is already on this PC. We'll open it — then follow its prompts: it'll show a QR code, you scan it with your phone's camera, and approve the permissions it asks for.<br><br>Leave this window open. Come back when Phone Link says your phone is connected.`;
+    const myGen = gen;
+    const pairMsg = phone === "ios"
+      ? `choose <b>iPhone</b>, pair over Bluetooth, and say yes when your iPhone asks to share notifications and messages`
+      : `it'll show a QR code — scan it with your phone's camera and approve the permissions`;
+    // Ask the PC whether Phone Link is actually installed BEFORE claiming it is.
     overlay.innerHTML = `<div class="catalog">
       <h2>Pair your phone with Windows ${counter(2)}</h2>
-      <div class="muted" style="margin-bottom:8px">${body}</div>
+      <div id="tsBody" class="muted" style="margin-bottom:8px">Checking for Phone Link…</div>
       <div id="tsStatus" style="min-height:18px;margin-top:8px;font-size:13px"></div>
-      <div class="row" style="justify-content:flex-end;gap:8px;margin-top:6px">
-        <button class="btn" id="tsBack">Back</button>
-        <button class="btn" id="tsPaired">I've already paired</button>
-        <button class="btn green" id="tsOpen">Open Phone Link</button>
-      </div>${foot}</div>`;
-    box().querySelector("#tsBack").onclick = () => render(1);
-    box().querySelector("#tsPaired").onclick = () => render(3);
-    box().querySelector("#tsOpen").onclick = async (e) => {
-      const status = box().querySelector("#tsStatus");
-      let ok = false;
-      try {
-        const r = await fetch("/system/open-phone-link", { method: "POST" });
-        const b = await r.json().catch(() => ({}));
-        ok = r.ok && b.launched !== false;
-      } catch (_) { ok = false; }
-      if (!ok) {
-        status.textContent = `Couldn't open Phone Link. Press the Windows key and type "Phone Link" to open it yourself — then come back here.`;
-        status.style.color = "#ff6b6b";
+      <div class="row" id="tsBtns" style="justify-content:flex-end;gap:8px;margin-top:6px"></div>
+      ${foot}</div>`;
+    fetch("/system/phone-link-status").then((r) => r.json())
+      .then((s) => { if (myGen === gen) fill(s.installed); })
+      .catch(() => { if (myGen === gen) fill(null); });
+
+    function fill(installed) {
+      const body = box().querySelector("#tsBody");
+      const btns = box().querySelector("#tsBtns");
+      const back = `<button class="btn" id="tsBack">Back</button>`;
+      const paired = `<button class="btn" id="tsPaired">I've already paired</button>`;
+      if (installed === false) {
+        body.innerHTML = `Phone Link isn't on this PC yet — it's a free Microsoft app. Get it from the Store (one click), install it, then come back here, open it, and ${pairMsg}.`;
+        btns.innerHTML = back + paired + `<button class="btn green" id="tsGet">Get Phone Link</button>`;
+        wireCommon();
+        box().querySelector("#tsGet").onclick = async (e) => {
+          await fetch("/system/get-phone-link", { method: "POST" }).catch(() => {});
+          e.target.textContent = "Open Phone Link";
+          e.target.onclick = openPL;
+        };
+      } else {
+        body.innerHTML = installed === null
+          ? `We'll open Phone Link (Microsoft's built-in phone sync). If it isn't installed, use <b>Get Phone Link</b> to grab it from the Store first — then ${pairMsg}.`
+          : `Phone Link is on this PC. Open it, then ${pairMsg}.`;
+        btns.innerHTML = back + paired
+          + (installed === null ? `<button class="btn" id="tsGet">Get Phone Link</button>` : "")
+          + `<button class="btn green" id="tsOpen">Open Phone Link</button>`;
+        wireCommon();
+        if (installed === null) {
+          box().querySelector("#tsGet").onclick = () =>
+            fetch("/system/get-phone-link", { method: "POST" }).catch(() => {});
+        }
+        box().querySelector("#tsOpen").onclick = openPL;
       }
-      // Either way, give an obvious way forward.
-      e.target.textContent = "My phone is paired →";
-      e.target.onclick = () => render(3);
-    };
+      function wireCommon() {
+        box().querySelector("#tsBack").onclick = () => render(1);
+        box().querySelector("#tsPaired").onclick = () => render(3);
+      }
+      async function openPL(e) {
+        const status = box().querySelector("#tsStatus");
+        let ok = false;
+        try {
+          const r = await fetch("/system/open-phone-link", { method: "POST" });
+          const b = await r.json().catch(() => ({}));
+          ok = r.ok && b.launched !== false;
+        } catch (_) { ok = false; }
+        if (!ok) {
+          status.textContent = `Couldn't open Phone Link automatically. Press the Windows key, type "Phone Link", and open it — or use Get Phone Link to install it first.`;
+          status.style.color = "#ff6b6b";
+        }
+        e.target.textContent = "My phone is paired →";
+        e.target.onclick = () => render(3);
+      }
+    }
   }
 
   function step3() {

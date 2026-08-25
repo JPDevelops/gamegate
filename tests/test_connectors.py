@@ -159,6 +159,16 @@ def test_text_sync_connector_four_state_model(client):
     assert t["connect_label"] == "Turn syncing back on"
 
 
+def test_phone_link_endpoints_are_safe_everywhere(client):
+    # Status never 500s and always reports a tri-state (True/False/None off-Windows).
+    s = client.get("/system/phone-link-status")
+    assert s.status_code == 200 and s.json()["installed"] in (True, False, None)
+    # Launch/install just report launched:bool and never raise (no-op off-Windows).
+    for path in ("/system/open-phone-link", "/system/get-phone-link"):
+        r = client.post(path)
+        assert r.status_code == 200 and "launched" in r.json()
+
+
 def test_text_probe_detects_a_text_after_since(client):
     before = "2026-01-01T00:00:00+00:00"
     assert client.get("/connectors/text/probe", params={"since": before}).json()["captured"] is False

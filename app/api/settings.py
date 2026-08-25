@@ -133,20 +133,63 @@ def set_text_sync(config: TextSyncConfig, service: SettingsDep) -> dict:
     return {"enabled": service.get_all()["text_sync_enabled"]}
 
 
-@router.post("/system/open-phone-link")
-def open_phone_link() -> dict:
-    """Launch Windows Phone Link (ms-phone:) so the setup walkthrough can open it
-    for the user with one click. Best-effort + Windows-only; a failure just means
-    the user opens it from the Start menu instead."""
+# Phone Link's Microsoft Store product page — used to INSTALL it when missing.
+# (Launching ms-phone: on a PC without Phone Link opens the Store on a useless
+# "ms-phone" keyword search, which reads as broken — so we send them here instead.)
+_PHONE_LINK_STORE = "ms-windows-store://pdp/?ProductId=9NMPJ99VJBWV"
+
+
+def _startfile(uri: str) -> dict:
+    """Open a fixed, non-user-controlled Windows URI. Best-effort + Windows-only."""
     import sys
 
     if sys.platform != "win32":
         return {"launched": False, "detail": "Only available on Windows."}
     try:
-        os.startfile("ms-phone:")  # noqa: S606 — fixed, non-user-controlled URI
+        os.startfile(uri)  # noqa: S606 — fixed URI, not user input
         return {"launched": True}
     except Exception as exc:  # noqa: BLE001 — never 500; the wizard has a manual fallback
         return {"launched": False, "detail": str(exc)[:200]}
+
+
+@router.get("/system/phone-link-status")
+def phone_link_status() -> dict:
+    """Is Windows Phone Link installed for this user? The setup walkthrough asks
+    first so it never claims the app is present when it isn't (issue: wizard said
+    "already on this PC" on a machine without it). Returns installed=None when it
+    can't be determined (non-Windows, or the check failed) — the wizard then
+    offers a neutral install-or-open path rather than guessing."""
+    import subprocess
+    import sys
+
+    if sys.platform != "win32":
+        return {"installed": None}
+    try:
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "if (Get-AppxPackage -Name Microsoft.YourPhone) { 'yes' } else { 'no' }"],
+            capture_output=True, text=True, timeout=12, creationflags=no_window, check=False,
+        )
+        out = (res.stdout or "").strip().lower()
+        return {"installed": True} if "yes" in out else (
+            {"installed": False} if "no" in out else {"installed": None})
+    except Exception:  # noqa: BLE001 — detection is best-effort
+        return {"installed": None}
+
+
+@router.post("/system/open-phone-link")
+def open_phone_link() -> dict:
+    """Launch Phone Link (ms-phone:) so the walkthrough can open it in one click.
+    Windows-only, best-effort — the wizard has a manual fallback."""
+    return _startfile("ms-phone:")
+
+
+@router.post("/system/get-phone-link")
+def get_phone_link() -> dict:
+    """Open Phone Link's Microsoft Store page so the user can install it when the
+    status check says it's missing."""
+    return _startfile(_PHONE_LINK_STORE)
 
 
 @router.get("/settings/client")
