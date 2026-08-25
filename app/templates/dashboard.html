@@ -531,10 +531,14 @@ async function connAction(id, action) {
   setTimeout(async () => { await refresh(); route(); }, 800);
 }
 function showAiKeyModal() {
-  const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
   const overlay = document.createElement("div");
   overlay.className = "catalog-overlay";
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+  _aiKeyInputView(overlay);
+}
+function _aiKeyInputView(overlay) {
+  const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
   overlay.innerHTML = `<div class="catalog">
     <h2>Connect AI Classifier</h2>
     <div class="muted" style="margin-bottom:12px">Paste your OpenAI API key. It's stored only on this PC and never shown again — only each notification's title and a short snippet are sent to OpenAI. Get a key at platform.openai.com → API keys.</div>
@@ -544,28 +548,47 @@ function showAiKeyModal() {
       <button class="btn" onclick="this.closest('.catalog-overlay').remove()">Cancel</button>
       <button class="btn green" onclick="saveAiKey(this)">Save &amp; connect</button>
     </div></div>`;
-  document.body.appendChild(overlay);
   const inp = overlay.querySelector("#aiKeyInput"); if (inp) inp.focus();
+}
+// In-app message view inside the SAME styled pop-up (no jarring white browser
+// alert). `back` = OK returns to the key input; otherwise OK closes + refreshes.
+function _aiKeyMessageView(overlay, message, color, back) {
+  overlay.innerHTML = `<div class="catalog">
+    <h2>AI Classifier</h2>
+    <div style="margin:10px 0 18px;font-size:14px;${color ? "color:" + color : ""}">${esc(message)}</div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn green" id="aiMsgOk">OK</button>
+    </div></div>`;
+  overlay.querySelector("#aiMsgOk").onclick = () => {
+    if (back) { _aiKeyInputView(overlay); }
+    else { overlay.remove(); refresh().then(route); }
+  };
 }
 async function saveAiKey(btn) {
   const overlay = btn.closest(".catalog-overlay");
   const key = (overlay.querySelector("#aiKeyInput").value || "").trim();
   const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
-  if (!key && !hasKey) { alert("Please paste your API key."); return; }
+  if (!key && !hasKey) { _aiKeyMessageView(overlay, "Please paste your API key.", "", true); return; }
   btn.disabled = true; btn.textContent = "Checking key…";
   const payload = key ? { enabled: true, api_key: key } : { enabled: true };
-  const r = await fetch("/settings/classifier", { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const b = await r.json().catch(() => ({}));
+  let r, b;
+  try {
+    r = await fetch("/settings/classifier", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    b = await r.json().catch(() => ({}));
+  } catch (e) {
+    _aiKeyMessageView(overlay, "Couldn't reach GameGate. Try again.", "#ff6b6b", true); return;
+  }
   if (!r.ok) {
-    // Bad/rejected key — keep the pop-up open so they can fix it.
-    alert(b.detail || "Couldn't save the key.");
-    btn.disabled = false; btn.textContent = "Save & connect";
+    // Rejected key → show it in-app; OK returns to the input so they can retry.
+    _aiKeyMessageView(overlay, b.detail || "Couldn't save the key.", "#ff6b6b", true);
     return;
   }
-  overlay.remove();
-  if (b.note && b.note.toLowerCase().includes("couldn't")) alert(b.note);  // offline caveat
-  await refresh(); route();
+  if (b.note && b.note.toLowerCase().includes("couldn't")) {
+    _aiKeyMessageView(overlay, b.note, "", false);   // saved w/ caveat; OK closes
+  } else {
+    _aiKeyMessageView(overlay, "Connected. GameGate will now prioritize your notifications with AI.", "var(--green, #2ee06f)", false);
+  }
 }
 function showCatalog() {
   const c = cache.connections;
