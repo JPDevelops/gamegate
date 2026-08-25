@@ -1,0 +1,10 @@
+{
+  "local_mode": true,
+  "capture_windows_notifications": true,
+  "windows_notif_prompted": true,
+  "auto_detect": true,
+  "game_processes": [],
+  "poll_interval_seconds": 5,
+  "api_url": "",
+  "api_token": ""
+}
