@@ -703,6 +703,13 @@ def run_tray() -> None:
         threading.Thread(target=reader.run, args=(stop,), daemon=True).start()
         log.info("Windows notification capture enabled (database reader)")
     icon.run()
+    # Hard-exit once the tray loop ends (Quit). The embedded FastAPI server runs
+    # sync handlers in a non-daemon threadpool that would otherwise keep the
+    # process alive after main() returns — so "Quit" left GameGate.exe in Task
+    # Manager AND held the single-instance lock, which made the next launch a
+    # no-op (no update check). os._exit terminates every thread immediately.
+    log.info("GameGate quitting")
+    os._exit(0)
 
 
 def _setup_logging() -> None:

@@ -12,7 +12,7 @@
 ; Inno directives/entries are ONE LINE each. Copy lives in [Messages] + [Code].
 
 #define AppName "GameGate"
-#define AppVersion "0.3.3"
+#define AppVersion "0.3.4"
 #define AppExe "GameGate.exe"
 #define Publisher "JPDevelops"
 
