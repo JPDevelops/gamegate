@@ -50,16 +50,32 @@ SINGLE_INSTANCE_PORT = 47653  # arbitrary fixed port; second launch fails the bi
 
 
 def acquire_single_instance_lock() -> socket.socket | None:
-    """Bind a localhost port as a cross-process mutex. Returns the held
-    socket, or None if another GameGate instance already owns it (issue #33:
-    multiple instances caused ghost trays and un-quittable icons)."""
+    """Bind + listen on a localhost port as a cross-process mutex AND a signal
+    channel. Returns the held socket, or None if another GameGate instance
+    already owns it (issue #33: multiple instances caused ghost trays and
+    un-quittable icons). The running instance accept()s on this socket so a
+    second launch can ask it to open the dashboard window (see signal_show_window
+    + the accept loop in run_tray)."""
     lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         lock.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
+        lock.listen(5)
         return lock
     except OSError:
         lock.close()
         return None
+
+
+def signal_show_window() -> bool:
+    """Tell the already-running instance to open its window. Used when the user
+    launches GameGate again (Start menu / search / double-click) while it's
+    already in the tray — instead of silently exiting, we surface the window."""
+    try:
+        with socket.create_connection(("127.0.0.1", SINGLE_INSTANCE_PORT), timeout=3) as conn:
+            conn.sendall(b"show\n")
+        return True
+    except OSError:
+        return False
 
 log = logging.getLogger("gamegate.tray")
 
@@ -125,12 +141,13 @@ class FullApiClient(ApiClient):
         """Ingest a captured event (e.g. a Windows notification) into GameGate."""
         return self._post_json("/events", payload)
 
-    def report_update_status(self, count: int, build: str) -> bool:
-        """Tell the server how many updates are pending + this build, so the
-        dashboard Settings area can show the same 'Latest version' / 'Update
-        available' state as the tray (review: same function in settings)."""
+    def report_update_status(self, count: int, build: str, version: str = "") -> bool:
+        """Tell the server how many updates are pending + this build + the app
+        version, so the dashboard can show 'Latest version' / 'Update available'
+        AND the real version number instead of the stale package version."""
         return self._post_json(
-            "/agent/update-status", {"pending": int(count), "build": build}
+            "/agent/update-status",
+            {"pending": int(count), "build": build, "version": version},
         )
 
 
@@ -515,8 +532,11 @@ def pick_notifier(config: dict):
     return show_overlay
 
 
-def run_tray() -> None:
-    """Wire the tray icon, detector thread, and toast pump together."""
+def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = False) -> None:
+    """Wire the tray icon, detector thread, and toast pump together. `lock` is
+    the single-instance socket; if given, we accept() on it so a second launch
+    can pop the window. `open_window_on_start` opens the dashboard right away
+    (a user launch), which the boot/startup shortcut suppresses via --startup."""
     import pystray
 
     config = load_config()
@@ -563,14 +583,6 @@ def run_tray() -> None:
         status = api.get_status()
         state = status.get("state", "unknown") if status else "API unreachable"
         notify("GameGate status", str(state), duration_s=pump.duration_s, sound=pump.sound)
-
-    def on_digest(icon, _item):
-        digest = api.latest_digest()
-        if digest:
-            title, body = digest_title_body(digest)
-            notify(title, body, duration_s=pump.duration_s, sound=pump.sound)
-        else:
-            notify("GameGate", "No digest yet.", duration_s=pump.duration_s, sound=pump.sound)
 
     def on_dnd(icon, _item):
         active = dnd.toggle()
@@ -622,7 +634,6 @@ def run_tray() -> None:
             pystray.MenuItem(f"Build: {build_info()}", None, enabled=False),
             pystray.MenuItem("Open GameGate", on_open, default=True),
             pystray.MenuItem("Status", on_status),
-            pystray.MenuItem("Last digest", on_digest),
             pystray.MenuItem("Do Not Disturb", on_dnd),
             pystray.MenuItem(update_item_text, on_update, enabled=update_item_enabled),
             pystray.MenuItem("Quit", on_quit),
@@ -636,6 +647,7 @@ def run_tray() -> None:
     signal.signal(signal.SIGINT, handle_sigint)
 
     def update_check_loop():
+        from updater import AGENT_VERSION
         checker = UpdateChecker(update_script_path().parent.parent)
         stop.wait(20)  # let the app settle before the first check
         while not stop.is_set():
@@ -645,7 +657,7 @@ def run_tray() -> None:
                 with contextlib.suppress(Exception):
                     icon.update_menu()               # re-render 'Latest version' vs 'Update (N)'
                 with contextlib.suppress(Exception):
-                    api.report_update_status(count, build_info())  # so the dashboard shows it too
+                    api.report_update_status(count, build_info(), AGENT_VERSION)  # dashboard too
                 if count > 0:
                     # Never interrupt a game with an update prompt — that's the
                     # exact thing GameGate exists to prevent (M22). Wait for a
@@ -669,10 +681,10 @@ def run_tray() -> None:
         """Downloaded/installed builds self-update from GitHub Releases: check on
         startup, then periodically. When a newer version is applied, quit so the
         running exe is released and the swap can relaunch the new one."""
-        from updater import check_and_update
-        update_status["count"] = 0  # auto-update handles it → tray shows "Latest version"
-        with contextlib.suppress(Exception):
-            icon.update_menu()
+        from updater import AGENT_VERSION, check_and_update
+        # count stays None until the first check completes, so the tray shows
+        # "Checking for updates…" first and only then "Latest version" (not the
+        # old behaviour of jumping straight to "Latest version").
         stop.wait(15)  # let the app settle before touching the network
         while not stop.is_set():
             try:
@@ -681,12 +693,37 @@ def run_tray() -> None:
                     stop.set()
                     icon.stop()
                     return
+                # Up to date: reflect it in the tray AND report to the server so
+                # the dashboard shows the version instead of a stuck "checking".
+                update_status["count"] = 0
+                with contextlib.suppress(Exception):
+                    icon.update_menu()
+                with contextlib.suppress(Exception):
+                    api.report_update_status(0, build_info(), AGENT_VERSION)
             except Exception:
                 log.exception("Auto-update check failed")
             stop.wait(6 * 3600)  # re-check every 6 hours
 
+    def instance_signal_loop():
+        """A second launch connects to the single-instance socket to ask us to
+        surface the window (so clicking the app in Start/search opens it instead
+        of silently doing nothing while we're already in the tray)."""
+        while not stop.is_set():
+            try:
+                conn, _ = lock.accept()
+            except OSError:
+                return  # socket closed on shutdown
+            with contextlib.suppress(Exception):
+                conn.recv(16)
+                conn.close()
+            log.info("Second-instance launch → opening window")
+            with contextlib.suppress(Exception):
+                open_window()
+
     threading.Thread(target=detector_loop, daemon=True).start()
     threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
+    if lock is not None:
+        threading.Thread(target=instance_signal_loop, daemon=True).start()
     if getattr(sys, "frozen", False):
         threading.Thread(target=auto_update_loop, daemon=True).start()
     else:
@@ -721,6 +758,11 @@ def run_tray() -> None:
         reader = NotificationDbReader(api.post_event)
         threading.Thread(target=reader.run, args=(stop,), daemon=True).start()
         log.info("Windows notification capture enabled (database reader)")
+    if open_window_on_start:
+        # A user launch (not the silent boot/startup run) opens the dashboard
+        # right away, so clicking the app actually shows something.
+        with contextlib.suppress(Exception):
+            open_window()
     icon.run()
     # Quit must close EVERYTHING, not just the tray: the dashboard window is a
     # separate child process (with its own WebView2), and the embedded FastAPI
@@ -766,6 +808,16 @@ if __name__ == "__main__":
         raise SystemExit(0)
     _lock = acquire_single_instance_lock()
     if _lock is None:
-        log.error("GameGate is already running — exiting.")
-        raise SystemExit(1)
-    run_tray()
+        # Already running: instead of silently exiting, ask the running instance
+        # to open its window — so launching GameGate from Start/search surfaces
+        # the app instead of appearing to do nothing.
+        if signal_show_window():
+            log.info("GameGate already running — asked it to open the window.")
+        else:
+            log.error("GameGate is already running — exiting.")
+        raise SystemExit(0)
+    # The common "click the app while it's already running" case is handled by
+    # the single-instance signal above (it pops the window). A cold launch stays
+    # in the tray (so boot/startup doesn't throw a window in your face) — except
+    # the post-install launch, which passes --show to greet you with the window.
+    run_tray(lock=_lock, open_window_on_start="--show" in sys.argv)

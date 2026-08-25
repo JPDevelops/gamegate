@@ -7,12 +7,13 @@ until the next report. Lets the dashboard Settings area show the same
 """
 from datetime import UTC, datetime
 
-_state: dict = {"pending": None, "build": None, "at": None}
+_state: dict = {"pending": None, "build": None, "version": None, "at": None}
 
 
-def set_agent_update(pending: int, build: str) -> None:
+def set_agent_update(pending: int, build: str, version: str = "") -> None:
     _state["pending"] = int(pending)
     _state["build"] = build or None
+    _state["version"] = version or None
     _state["at"] = datetime.now(UTC).isoformat()
 
 

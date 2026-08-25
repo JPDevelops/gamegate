@@ -141,14 +141,19 @@ def test_agent_update_status_surfaces_in_connections(client):
     from app.services import agent_status
 
     try:
-        client.post("/agent/update-status", json={"pending": 0, "build": "abc123"})
+        client.post("/agent/update-status",
+                    json={"pending": 0, "build": "abc123", "version": "0.5.4"})
         agent = client.get("/connections").json()["agent"]
         assert agent["pending"] == 0 and agent["build"] == "abc123"
+        # The reported version surfaces so the dashboard can show the real
+        # running version instead of the stale package version (#2/#6).
+        assert agent["version"] == "0.5.4"
 
         client.post("/agent/update-status", json={"pending": 3, "build": "abc123"})
         assert client.get("/connections").json()["agent"]["pending"] == 3
     finally:
-        agent_status._state.update({"pending": None, "build": None, "at": None})
+        agent_status._state.update(
+            {"pending": None, "build": None, "version": None, "at": None})
 
 
 def test_digest_history_lists_recent_with_rendered_text(client):

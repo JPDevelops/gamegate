@@ -36,6 +36,7 @@ def set_dnd(update: DndUpdate, service: StatusServiceDep) -> StatusResponse:
 class AgentUpdateReport(BaseModel):
     pending: int
     build: str = ""
+    version: str = ""
 
 
 @router.post("/agent/update-status")
@@ -43,5 +44,5 @@ def report_agent_update(report: AgentUpdateReport) -> dict:
     """The desktop tray reports how many updates are pending, so the dashboard
     Settings area can show the same 'Latest version' / 'Update available' state
     as the tray menu (review request)."""
-    set_agent_update(report.pending, report.build)
+    set_agent_update(report.pending, report.build, report.version)
     return {"recorded": True}
