@@ -650,40 +650,34 @@ def run_tray() -> None:
     threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
     threading.Thread(target=update_check_loop, daemon=True).start()
     # First-run consent for the Windows notification catch-all — ask once, and
-    # flip the setting on ourselves if the user says yes (no config editing). Also
-    # re-ask if the user wanted it on but the OS permission has since been turned
-    # off. Windows-only; the Tk dialog runs on the main thread here at startup,
-    # which is the safe place for Tk. (owner request)
-    if sys.platform == "win32":
-        from windows_notifications import access_status
-        perm = access_status()  # 'allowed' / 'denied' / 'unspecified' / None
-        first_run = not config.get("windows_notif_prompted")
-        wanted_but_off = config.get("capture_windows_notifications") and perm == "denied"
-        if first_run or wanted_but_off:
-            want = show_consent_prompt(
-                "Catch all your notifications?",
-                "Let GameGate capture your Windows notifications — Discord, Slack, "
-                "email, anything — so it can hold the noise while you game and hand "
-                "you one clean recap after. Windows will ask you to allow this.\n\n"
-                "To turn it off later, open Windows Settings > Privacy & security > "
-                "Notifications and remove GameGate's access.",
-                yes_label="Yes, catch them", no_label="Not now",
-            )
-            config["capture_windows_notifications"] = want
-            config["windows_notif_prompted"] = True
-            save_config_updates({
-                "capture_windows_notifications": want,
-                "windows_notif_prompted": True,
-            })
+    # flip the setting on ourselves if the user says yes (no config editing).
+    # We read notifications straight from the Windows notification database, so
+    # there's NO OS permission grant to request — just a one-time privacy ask.
+    # Windows-only; the Tk dialog runs on the main thread here (safe for Tk).
+    if sys.platform == "win32" and not config.get("windows_notif_prompted"):
+        want = show_consent_prompt(
+            "Catch all your notifications?",
+            "Let GameGate watch your Windows notifications — Discord, Slack, "
+            "email, anything — so it can hold the noise while you game and hand "
+            "you one clean recap after.\n\n"
+            "You can turn this off anytime from the tray menu.",
+            yes_label="Yes, catch them", no_label="Not now",
+        )
+        config["capture_windows_notifications"] = want
+        config["windows_notif_prompted"] = True
+        save_config_updates({
+            "capture_windows_notifications": want,
+            "windows_notif_prompted": True,
+        })
 
     if config.get("capture_windows_notifications"):
-        # Opt-in: mirror EVERY Windows notification into GameGate (Discord, Slack,
-        # email, ...). Windows-only; the listener no-ops gracefully elsewhere. The
-        # listener's request_access triggers the OS permission dialog if needed.
-        from windows_notifications import WindowsNotificationListener
-        listener = WindowsNotificationListener(api.post_event)
-        threading.Thread(target=listener.run, args=(stop,), daemon=True).start()
-        log.info("Windows notification capture enabled")
+        # Mirror EVERY Windows notification into GameGate (Discord, Slack, email,
+        # ...) by reading the per-user notification database — no app packaging,
+        # no permission prompt, no admin. No-ops safely if the DB isn't present.
+        from notif_db import NotificationDbReader
+        reader = NotificationDbReader(api.post_event)
+        threading.Thread(target=reader.run, args=(stop,), daemon=True).start()
+        log.info("Windows notification capture enabled (database reader)")
     icon.run()
 
 

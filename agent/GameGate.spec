@@ -28,25 +28,14 @@ hiddenimports += collect_submodules("app")        # the FastAPI server package
 hiddenimports += collect_submodules("uvicorn")    # dynamically-imported loops/protocols
 hiddenimports += ["dotenv", "h11", "anyio"]
 
-# winsdk (Windows notification listener) is projected/dynamically structured, so
-# PyInstaller can't discover its namespaces from the `from winsdk.windows...`
-# imports — collect the whole package so the capture code's namespaces are all
-# present. Guarded: on the Linux validation build winsdk isn't installed, and
-# this is simply skipped.
-winsdk_datas, winsdk_binaries = [], []
-try:
-    from PyInstaller.utils.hooks import collect_all
-    _wd, _wb, _wh = collect_all("winsdk")
-    winsdk_datas, winsdk_binaries = _wd, _wb
-    hiddenimports += _wh
-except Exception:
-    pass
+# Notification capture reads the Windows notification database directly (see
+# notif_db.py) — no winsdk / packaged-app API needed, so nothing extra to bundle.
 
 a = Analysis(
     ["tray_app.py"],
     pathex=[REPO_ROOT],
-    binaries=winsdk_binaries,
-    datas=[("../app/templates/dashboard.html", "app/templates"), *winsdk_datas],
+    binaries=[],
+    datas=[("../app/templates/dashboard.html", "app/templates")],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
