@@ -478,8 +478,10 @@ def run_window() -> None:
     import webview
 
     config = load_config()
+    url = build_window_url(config)
+    log.info("window loading URL: %s", url)
     window = webview.create_window(
-        "GameGate", build_window_url(config),
+        "GameGate", url,
         width=1080, height=760, background_color="#0e1011",
     )
     webview.start(_window_chrome, window)
@@ -685,10 +687,29 @@ def run_tray() -> None:
     icon.run()
 
 
+def _setup_logging() -> None:
+    """Log to console AND to %LOCALAPPDATA%\\GameGate\\gamegate.log. The packaged
+    app runs with no console, so a file log is the only way to see what the
+    embedded server / window actually did (e.g. why a start failed)."""
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    try:
+        logdir = data_dir()
+        logdir.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(logdir / "gamegate.log", encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — never let logging setup stop the app
+        pass
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+    )
+
+
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    _setup_logging()
     enable_dpi_awareness()
     if "--window" in sys.argv:
+        log.info("window process starting")
         run_window()  # window process: no tray, no lock — the tray owns those
         raise SystemExit(0)
     _lock = acquire_single_instance_lock()

@@ -10,11 +10,13 @@ This is what makes "download the .msix, launch it, it just works" true: the
 tray process starts this server, then points its own API client + the dashboard
 window at http://127.0.0.1:<port>.
 """
+import asyncio
 import contextlib
 import logging
 import os
 import secrets
 import socket
+import sys
 import threading
 import time
 import urllib.request
@@ -94,6 +96,14 @@ def start_local_server(config: dict, db_path: str, save, port: int = DEFAULT_POR
 
     def _serve():
         try:
+            # Windows: uvicorn in a background (non-main) thread MUST use the
+            # Selector event loop. The default Proactor loop can only be driven
+            # from the main thread, so in a daemon thread it silently fails to
+            # serve — the embedded server never binds and the app can't reach it
+            # (the exact "server on a port but 404 from something else" symptom).
+            # No effect off Windows.
+            if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
             server.run()
         except Exception:  # noqa: BLE001 — surface, don't kill the tray
             log.exception("Embedded GameGate server stopped unexpectedly")
