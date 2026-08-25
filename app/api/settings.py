@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.db import get_database
 from app.deps import get_settings_service
 from app.security import require_api_token
-from app.services.classifier import reset_classifier_cache
+from app.services.classifier import reset_classifier_cache, verify_openai_key
 from app.services.settings_service import SettingsService
 
 router = APIRouter(dependencies=[Depends(require_api_token)])
@@ -41,12 +41,19 @@ def set_classifier(config: ClassifierConfig, service: SettingsDep) -> dict:
     stored locally and never returned. api_key=None keeps the existing key;
     api_key="" clears it. Applies to os.environ immediately so the running
     classifier picks it up (via the reset below)."""
+    note = ""
     if config.api_key is not None:
         key = config.api_key.strip()
-        service.set_classifier_key(key)
         if key:
+            # Verify the key with OpenAI before saving, so a bad key is caught
+            # here (not silently "connected" then failing on every notification).
+            ok, note = verify_openai_key(key)
+            if not ok:
+                raise HTTPException(status_code=400, detail=note)
+            service.set_classifier_key(key)
             os.environ["OPENAI_API_KEY"] = key
         else:
+            service.set_classifier_key("")
             os.environ.pop("OPENAI_API_KEY", None)
     service.update({"classifier_enabled": config.enabled})
     os.environ["CLASSIFIER_ENABLED"] = "true" if config.enabled else "false"
@@ -55,6 +62,7 @@ def set_classifier(config: ClassifierConfig, service: SettingsDep) -> dict:
     return {
         "enabled": settings["classifier_enabled"],
         "api_key_set": settings["classifier_api_key_set"],
+        "note": note,
     }
 
 

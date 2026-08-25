@@ -552,11 +552,19 @@ async function saveAiKey(btn) {
   const key = (overlay.querySelector("#aiKeyInput").value || "").trim();
   const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
   if (!key && !hasKey) { alert("Please paste your API key."); return; }
+  btn.disabled = true; btn.textContent = "Checking key…";
   const payload = key ? { enabled: true, api_key: key } : { enabled: true };
   const r = await fetch("/settings/classifier", { method: "POST",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  if (!r.ok) { alert("Couldn't save the key."); return; }
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // Bad/rejected key — keep the pop-up open so they can fix it.
+    alert(b.detail || "Couldn't save the key.");
+    btn.disabled = false; btn.textContent = "Save & connect";
+    return;
+  }
   overlay.remove();
+  if (b.note && b.note.toLowerCase().includes("couldn't")) alert(b.note);  // offline caveat
   await refresh(); route();
 }
 function showCatalog() {

@@ -9,10 +9,18 @@ from app.services.ingest_service import IngestService
 from app.services.settings_service import SettingsService
 
 
-def test_set_classifier_stores_key_as_secret(client):
+def _accept_key(monkeypatch):
+    """Stub the OpenAI key check so tests don't hit the network."""
+    from app.api import settings as settings_api
+    monkeypatch.setattr(settings_api, "verify_openai_key", lambda k: (True, "Key verified."))
+
+
+def test_set_classifier_stores_key_as_secret(client, monkeypatch):
+    _accept_key(monkeypatch)
     r = client.post("/settings/classifier", json={"enabled": True, "api_key": "sk-secret-123"})
     assert r.status_code == 200
-    assert r.json() == {"enabled": True, "api_key_set": True}
+    body = r.json()
+    assert body["enabled"] is True and body["api_key_set"] is True
     # The raw key must NEVER come back through the settings read.
     s = client.get("/settings").json()
     assert s["classifier_enabled"] is True
@@ -20,10 +28,43 @@ def test_set_classifier_stores_key_as_secret(client):
     assert "sk-secret-123" not in str(s)
 
 
-def test_set_classifier_can_clear_key(client):
+def test_set_classifier_can_clear_key(client, monkeypatch):
+    _accept_key(monkeypatch)
     client.post("/settings/classifier", json={"enabled": True, "api_key": "sk-x"})
     r = client.post("/settings/classifier", json={"enabled": False, "api_key": ""})
-    assert r.json() == {"enabled": False, "api_key_set": False}
+    assert r.json()["api_key_set"] is False and r.json()["enabled"] is False
+
+
+def test_bad_key_is_rejected_and_not_stored(client, monkeypatch):
+    from app.api import settings as settings_api
+    monkeypatch.setattr(settings_api, "verify_openai_key",
+                        lambda k: (False, "OpenAI rejected that key (invalid or revoked)."))
+    r = client.post("/settings/classifier", json={"enabled": True, "api_key": "sk-bad"})
+    assert r.status_code == 400
+    assert "rejected" in r.json()["detail"].lower()
+    # A rejected key must NOT be saved or enabled.
+    s = client.get("/settings").json()
+    assert s["classifier_api_key_set"] is False
+    assert s["classifier_enabled"] is False
+
+
+def test_verify_openai_key_paths():
+    import httpx
+
+    from app.services.classifier import verify_openai_key
+
+    def _client(status):
+        return httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(status)))
+
+    assert verify_openai_key("sk-x", client=_client(200))[0] is True
+    assert verify_openai_key("sk-x", client=_client(429))[0] is True   # rate-limited but valid
+    assert verify_openai_key("sk-x", client=_client(401))[0] is False  # rejected
+    assert verify_openai_key("", client=_client(200))[0] is False      # empty key
+
+    def _boom(req):
+        raise httpx.ConnectError("offline")
+    ok, msg = verify_openai_key("sk-x", client=httpx.Client(transport=httpx.MockTransport(_boom)))
+    assert ok is True and "couldn't" in msg.lower()                    # offline = soft-accept
 
 
 def _event(**over):

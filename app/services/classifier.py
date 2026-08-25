@@ -118,6 +118,34 @@ class OpenAIClassifier:
             raise ClassifierError(f"LLM classification failed: {exc}") from exc
 
 
+def verify_openai_key(api_key: str, timeout: float = 10.0,
+                      client: httpx.Client | None = None) -> tuple[bool, str]:
+    """Cheaply check that an OpenAI key is usable (GET /v1/models). Returns
+    (ok, message). A network failure is treated as OK-but-unverified so we don't
+    block a valid key just because the machine is briefly offline."""
+    if not (api_key or "").strip():
+        return False, "No API key provided."
+    owns = client is None
+    client = client or httpx.Client(timeout=timeout)
+    try:
+        resp = client.get(
+            "https://api.openai.com/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        if resp.status_code == 200:
+            return True, "Key verified."
+        if resp.status_code == 429:
+            return True, "Key accepted (currently rate-limited, but valid)."
+        if resp.status_code in (401, 403):
+            return False, "OpenAI rejected that key (invalid or revoked)."
+        return False, f"OpenAI returned an unexpected status ({resp.status_code})."
+    except httpx.HTTPError:
+        return True, "Saved, but couldn't reach OpenAI to verify it right now."
+    finally:
+        if owns:
+            client.close()
+
+
 class SafeClassifier:
     """Primary (LLM) with deterministic fallback. This class never raises."""
 
