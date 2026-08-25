@@ -20,9 +20,16 @@ DEFS = {
     # key itself is a SECRET, stored separately and NEVER returned to clients
     # (only a boolean "is it set?"), so it can't leak through GET /settings.
     "classifier_enabled": {"kind": "bool", "default": False},
+    # Gmail (local IMAP + app password path): whether to poll the inbox. The
+    # app password is a SECRET (stored + handled like the classifier key); the
+    # address is the user's own email and is safe to return so the UI can show
+    # "connected as …".
+    "gmail_enabled": {"kind": "bool", "default": False},
 }
 VERSION_KEY = "_version"
 CLASSIFIER_KEY_NAME = "classifier_api_key"  # secret; not in DEFS, never returned
+GMAIL_ADDRESS_KEY_NAME = "gmail_address"          # user's own email (returnable)
+GMAIL_PASSWORD_KEY_NAME = "gmail_app_password"    # secret; never returned
 
 
 def normalize_sender(sender: str) -> str:
@@ -48,6 +55,10 @@ class SettingsService:
         out["version"] = int(rows.get(VERSION_KEY, "0"))
         # Expose only WHETHER the AI key is set — never the key itself.
         out["classifier_api_key_set"] = bool(self._decode_secret(rows.get(CLASSIFIER_KEY_NAME)))
+        # Gmail: return the address (the user's own email, for the UI) but only a
+        # boolean for the app password — the secret itself never leaves the server.
+        out["gmail_address"] = self._decode_secret(rows.get(GMAIL_ADDRESS_KEY_NAME))
+        out["gmail_app_password_set"] = bool(self._decode_secret(rows.get(GMAIL_PASSWORD_KEY_NAME)))
         return out
 
     def get_classifier_key(self) -> str:
@@ -65,6 +76,41 @@ class SettingsService:
                 "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                 (CLASSIFIER_KEY_NAME, json.dumps((value or "").strip())),
             )
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, '1')"
+                " ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
+                (VERSION_KEY,),
+            )
+
+    def get_gmail_credentials(self) -> tuple[str, str]:
+        """(address, app_password) for server-side IMAP use only — the app
+        password is NEVER sent to a client."""
+        rows = dict(
+            self.db.connection()
+            .execute(
+                "SELECT key, value FROM settings WHERE key IN (?, ?)",
+                (GMAIL_ADDRESS_KEY_NAME, GMAIL_PASSWORD_KEY_NAME),
+            )
+            .fetchall()
+        )
+        return (
+            self._decode_secret(rows.get(GMAIL_ADDRESS_KEY_NAME)),
+            self._decode_secret(rows.get(GMAIL_PASSWORD_KEY_NAME)),
+        )
+
+    def set_gmail_credentials(self, address: str, app_password: str) -> None:
+        """Store (or clear) the Gmail address + app password and bump the version.
+        Pass empty strings to clear both."""
+        conn = self.db.connection()
+        with conn:
+            for key, value in (
+                (GMAIL_ADDRESS_KEY_NAME, (address or "").strip()),
+                (GMAIL_PASSWORD_KEY_NAME, (app_password or "").strip()),
+            ):
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, json.dumps(value)),
+                )
             conn.execute(
                 "INSERT INTO settings (key, value) VALUES (?, '1')"
                 " ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",

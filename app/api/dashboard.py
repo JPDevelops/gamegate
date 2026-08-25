@@ -162,7 +162,18 @@ def connections(
     gmail_enabled = os.environ.get("GMAIL_ENABLED", "").lower() == "true"
 
     gmail_running = service_active("gmail")
-    if gmail_enabled and gmail_token.exists() and gmail_running is not False:
+    if prefs.get("gmail_app_password_set"):
+        # Local IMAP + app-password path (the desktop app). Takes precedence: if
+        # the user pasted an app password, that's the Gmail they configured.
+        addr = prefs.get("gmail_address") or "your inbox"
+        if prefs.get("gmail_enabled"):
+            gmail = {"state": "connected", "kind": "imap",
+                     "detail": f"Watching {addr} over IMAP", "can_disconnect": True}
+        else:
+            gmail = {"state": "needs setup", "kind": "imap",
+                     "detail": "App password saved, but Gmail is turned off",
+                     "can_connect": True, "can_disconnect": True}
+    elif gmail_enabled and gmail_token.exists() and gmail_running is not False:
         gmail = {"state": "connected", "detail": "Read-only access, polling your inbox",
                  "can_disconnect": True}
     elif gmail_token.exists() and gmail_client:
@@ -175,7 +186,10 @@ def connections(
             "action": {"label": "Connect Gmail", "href": "/connect/gmail"},
         }
     else:
-        gmail = {"state": "disabled", "detail": "No OAuth client configured"}
+        # No cloud OAuth client (the local desktop app): offer the app-password path.
+        gmail = {"state": "disconnected", "kind": "imap",
+                 "detail": "Not connected — add your Gmail app password",
+                 "can_connect": True}
 
     discord_ready = bool(os.environ.get("DISCORD_BOT_TOKEN")) and bool(
         (os.environ.get("GAMEGATE_DISCORD_GUILD_ID", "") or "0").strip().isdigit()

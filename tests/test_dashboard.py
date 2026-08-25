@@ -83,7 +83,11 @@ def test_connections_reports_truth(client, monkeypatch):
     monkeypatch.delenv("CLASSIFIER_ENABLED", raising=False)
     monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
     body = client.get("/connections").json()
-    assert body["gmail"]["state"] == "disabled"
+    # With no cloud OAuth client and no app password saved, the local app offers
+    # the IMAP app-password path ("disconnected" + Connect), not a dead "disabled".
+    assert body["gmail"]["state"] == "disconnected"
+    assert body["gmail"]["kind"] == "imap"
+    assert body["gmail"]["can_connect"] is True
     assert body["slack"]["state"] == "disabled"
     assert body["discord"]["state"] == "needs setup"
     assert "Version" in body["settings"]

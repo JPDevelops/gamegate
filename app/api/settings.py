@@ -1,4 +1,5 @@
 """Settings endpoints + the transactional clear-data action."""
+import contextlib
 import os
 from typing import Annotated
 
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 
 from app.db import get_database
 from app.deps import get_settings_service
+from app.integrations.gmail_imap import clean_password, verify_imap_login
+from app.integrations.gmail_imap import configure as gmail_configure
 from app.security import require_api_token
 from app.services.classifier import reset_classifier_cache, verify_openai_key
 from app.services.settings_service import SettingsService
@@ -62,6 +65,57 @@ def set_classifier(config: ClassifierConfig, service: SettingsDep) -> dict:
     return {
         "enabled": settings["classifier_enabled"],
         "api_key_set": settings["classifier_api_key_set"],
+        "note": note,
+    }
+
+
+class GmailConfig(BaseModel):
+    enabled: bool
+    address: str | None = None      # the user's Gmail address
+    app_password: str | None = None  # omit to keep existing; "" clears the creds
+
+
+@router.post("/settings/gmail")
+def set_gmail(config: GmailConfig, service: SettingsDep) -> dict:
+    """Connect/disconnect the local Gmail (IMAP + app password) path. The app
+    password is validated with a real IMAP login before it's saved — a bad
+    address/password is rejected here (400), not silently on every poll — then
+    stored locally (never returned) and the background poller is (re)started."""
+    note = ""
+    cur_addr, cur_pw = service.get_gmail_credentials()
+    address = (config.address if config.address is not None else cur_addr).strip()
+
+    if config.app_password is not None:
+        if config.app_password.strip():
+            if not address:
+                raise HTTPException(status_code=400, detail="Enter your Gmail address.")
+            ok, note = verify_imap_login(address, config.app_password)
+            if not ok:
+                raise HTTPException(status_code=400, detail=note)
+            service.set_gmail_credentials(address, clean_password(config.app_password))
+        else:  # explicit clear
+            service.set_gmail_credentials("", "")
+    elif config.address is not None and address != cur_addr:
+        # Address changed but password kept — re-validate with the stored one.
+        if cur_pw:
+            ok, note = verify_imap_login(address, cur_pw)
+            if not ok:
+                raise HTTPException(status_code=400, detail=note)
+        service.set_gmail_credentials(address, cur_pw)
+
+    # Can't enable without credentials on file.
+    addr, pw = service.get_gmail_credentials()
+    enabled = config.enabled and bool(addr and pw)
+    service.update({"gmail_enabled": enabled})
+    # (Re)start or stop the poller to match — best-effort, never 500 the request.
+    with contextlib.suppress(Exception):
+        gmail_configure(addr, pw, enabled)
+
+    settings = service.get_all()
+    return {
+        "enabled": settings["gmail_enabled"],
+        "address": settings["gmail_address"],
+        "app_password_set": settings["gmail_app_password_set"],
         "note": note,
     }
 
