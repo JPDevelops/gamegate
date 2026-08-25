@@ -24,8 +24,11 @@ jobs:
           pip install -e . pytest httpx ruff
           ruff check app tests agent
           pytest -q
+      # Server deps (fastapi, uvicorn, httpx, python-dotenv) already came from
+      # `pip install -e .` in the test gate; add the desktop/GUI libs here. No
+      # winsdk anymore — notification capture reads wpndatabase.db directly.
       - name: Install build deps
-        run: pip install pyinstaller psutil pystray pillow pywebview winotify winsdk
+        run: pip install pyinstaller psutil pystray pillow pywebview winotify
         working-directory: agent
       - name: Stamp build
         shell: pwsh
@@ -34,13 +37,11 @@ jobs:
           $stamp = Get-Date -Format "MMM d HH:mm"
           "{`"build`": `"$hash`", `"built`": `"$stamp`"}" | Out-File -Encoding ascii agent/build_info.json
       - name: Build GameGate.exe
-        # --add-data bundles the build stamp INTO the single-file exe (it unpacks
-        # under _MEIPASS at runtime), so a downloaded release reports its real
-        # build instead of "unstamped build" (#13). ';.' is the Windows separator.
-        # --collect-submodules winsdk: winsdk loads its WinRT submodules lazily,
-        # so PyInstaller can't see them by static analysis — collect them or the
-        # Windows notification capture import fails at runtime in the exe.
-        run: pyinstaller --onefile --noconsole --name GameGate --icon gamegate.ico --add-data "build_info.json;." --collect-submodules winsdk tray_app.py
+        # Build via the spec so the embedded FastAPI server (../app) + dashboard
+        # template + uvicorn submodules are bundled — that's what makes the
+        # downloaded exe run standalone (local mode). The spec also bundles
+        # build_info.json when present (stamped above).
+        run: pyinstaller GameGate.spec
         working-directory: agent
       - name: Upload artifact
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3

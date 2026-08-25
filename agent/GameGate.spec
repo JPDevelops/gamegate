@@ -31,11 +31,18 @@ hiddenimports += ["dotenv", "h11", "anyio"]
 # Notification capture reads the Windows notification database directly (see
 # notif_db.py) — no winsdk / packaged-app API needed, so nothing extra to bundle.
 
+# The dashboard template is required; the build stamp is bundled when present
+# (CI writes agent/build_info.json before building) so a downloaded exe reports
+# its real build instead of "unstamped build".
+datas = [("../app/templates/dashboard.html", "app/templates")]
+if os.path.exists("build_info.json"):
+    datas.append(("build_info.json", "."))
+
 a = Analysis(
     ["tray_app.py"],
     pathex=[REPO_ROOT],
     binaries=[],
-    datas=[("../app/templates/dashboard.html", "app/templates")],
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
