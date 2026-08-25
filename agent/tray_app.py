@@ -328,6 +328,27 @@ def open_window() -> None:
         subprocess.Popen([sys.executable, __file__, "--window"], env=_child_env())
 
 
+def _kill_child_processes() -> None:
+    """On Quit, terminate the child process tree — the dashboard window process
+    and its WebView2 — so nothing lingers in Task Manager. psutil is bundled;
+    if it's somehow unavailable, fall back to taskkill on the window processes."""
+    try:
+        import psutil
+        for child in psutil.Process().children(recursive=True):
+            with contextlib.suppress(Exception):
+                child.kill()
+        return
+    except Exception:  # noqa: BLE001 — best effort; try taskkill as a fallback
+        log.debug("psutil child cleanup failed; trying taskkill", exc_info=True)
+    if sys.platform == "win32":
+        with contextlib.suppress(Exception):
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "GameGate.exe", "/FI", f"PID ne {os.getpid()}"],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                capture_output=True,
+            )
+
+
 def _darken_titlebar(window) -> None:
     """Native frame, dark trim: paint the Windows title bar in the app's own
     colors via DWM. Hardened after the first attempt silently failed on
@@ -703,12 +724,14 @@ def run_tray() -> None:
         threading.Thread(target=reader.run, args=(stop,), daemon=True).start()
         log.info("Windows notification capture enabled (database reader)")
     icon.run()
-    # Hard-exit once the tray loop ends (Quit). The embedded FastAPI server runs
-    # sync handlers in a non-daemon threadpool that would otherwise keep the
-    # process alive after main() returns — so "Quit" left GameGate.exe in Task
-    # Manager AND held the single-instance lock, which made the next launch a
-    # no-op (no update check). os._exit terminates every thread immediately.
+    # Quit must close EVERYTHING, not just the tray: the dashboard window is a
+    # separate child process (with its own WebView2), and the embedded FastAPI
+    # server runs sync handlers on a non-daemon threadpool that keeps this
+    # process alive after main() returns. So: kill the child process tree, then
+    # hard-exit self. Before this, "Quit" left GameGate in Task Manager AND held
+    # the single-instance lock (blocking relaunch + auto-update).
     log.info("GameGate quitting")
+    _kill_child_processes()
     os._exit(0)
 
 
