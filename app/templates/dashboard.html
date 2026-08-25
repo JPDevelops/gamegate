@@ -448,6 +448,17 @@ const views = {
         <input class="setinput" style="margin-top:8px" value="${esc(s.urgent_keywords.join(", "))}"
           onchange="setSetting('urgent_keywords', this.value.split(',').map(x=>x.trim()).filter(Boolean))"></div></div>
     </div>
+    <div class="section-title">AI Classifier</div>
+    <div class="card">
+      <div class="setrow"><div class="lbl"><div>Smart prioritizing (AI)</div>
+        <div class="muted">Let an AI score each notification (needs you now vs. can wait) and add a one-line summary. Your key stays on this PC; only the title + a short snippet is sent to the AI. Off = simple keyword rules.</div></div>
+        <div class="switch ${s.classifier_enabled ? "on" : ""}" onclick="toggleClassifier()"></div></div>
+      <div class="setrow"><div class="lbl"><div>OpenAI API key</div>
+        <div class="muted">${s.classifier_api_key_set ? "A key is saved. Paste a new one to replace it, or clear the box and leave to keep it." : "Paste your OpenAI key (sk-…) — get one at platform.openai.com. Needed for AI mode."}</div>
+        <input class="setinput" style="margin-top:8px" type="password" autocomplete="off"
+          placeholder="${s.classifier_api_key_set ? "•••••••••••• (saved)" : "sk-..."}"
+          onchange="setClassifierKey(this.value)"></div></div>
+    </div>
     <div class="section-title">Appearance</div>
     <div class="card">
       <div class="setrow"><div class="lbl"><div>Dark mode</div>
@@ -467,6 +478,22 @@ async function setSetting(key, value) {
   const r = await fetch("/settings", { method: "PUT",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) });
   if (!r.ok) { const b = await r.json().catch(() => ({})); alert(b.detail || "Invalid value"); }
+  await refresh(); route();
+}
+async function toggleClassifier() {
+  const on = cache.userSettings.classifier_enabled;
+  const r = await fetch("/settings/classifier", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: !on }) });
+  if (!r.ok) { alert("Could not update the AI setting"); return; }
+  await refresh(); route();
+}
+async function setClassifierKey(key) {
+  key = (key || "").trim();
+  if (!key) return;   // blank change = keep the existing key
+  const on = cache.userSettings.classifier_enabled;
+  const r = await fetch("/settings/classifier", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on, api_key: key }) });
+  if (!r.ok) { alert("Could not save the key"); return; }
   await refresh(); route();
 }
 async function toggleDnd() {

@@ -16,8 +16,13 @@ DEFS = {
     "freshness_minutes": {"kind": "int", "default": 10, "min": 1, "max": 120},
     "vip_senders": {"kind": "list", "default": []},
     "urgent_keywords": {"kind": "list", "default": ["urgent", "asap", "emergency"]},
+    # AI classifier: whether to score incoming notifications with an LLM. The
+    # key itself is a SECRET, stored separately and NEVER returned to clients
+    # (only a boolean "is it set?"), so it can't leak through GET /settings.
+    "classifier_enabled": {"kind": "bool", "default": False},
 }
 VERSION_KEY = "_version"
+CLASSIFIER_KEY_NAME = "classifier_api_key"  # secret; not in DEFS, never returned
 
 
 def normalize_sender(sender: str) -> str:
@@ -41,7 +46,39 @@ class SettingsService:
             else:
                 out[key] = definition["default"]
         out["version"] = int(rows.get(VERSION_KEY, "0"))
+        # Expose only WHETHER the AI key is set — never the key itself.
+        out["classifier_api_key_set"] = bool(self._decode_secret(rows.get(CLASSIFIER_KEY_NAME)))
         return out
+
+    def get_classifier_key(self) -> str:
+        """The stored AI API key (server-side use only — never send to a client)."""
+        row = self.db.connection().execute(
+            "SELECT value FROM settings WHERE key = ?", (CLASSIFIER_KEY_NAME,)
+        ).fetchone()
+        return self._decode_secret(row[0]) if row else ""
+
+    def set_classifier_key(self, value: str) -> None:
+        """Store (or clear) the AI API key and bump the settings version."""
+        conn = self.db.connection()
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (CLASSIFIER_KEY_NAME, json.dumps((value or "").strip())),
+            )
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, '1')"
+                " ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
+                (VERSION_KEY,),
+            )
+
+    @staticmethod
+    def _decode_secret(raw) -> str:
+        if not raw:
+            return ""
+        try:
+            return json.loads(raw) or ""
+        except (json.JSONDecodeError, TypeError):
+            return ""
 
     def update(self, changes: dict) -> dict:
         validated = {}

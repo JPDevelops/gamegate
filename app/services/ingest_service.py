@@ -53,6 +53,12 @@ class IngestService:
             elif any(keyword in text for keyword in prefs["urgent_keywords"] if keyword):
                 incoming.priority = EventPriority.URGENT
 
+        # Opt-in AI classifier: score the event and let it refine priority + add a
+        # one-line summary. Never downgrades below URGENT; never raises (safe
+        # fallback), so a wrong key or offline is invisible.
+        if incoming.priority != EventPriority.URGENT and prefs.get("classifier_enabled"):
+            self._ai_classify(incoming)
+
         state = self.status.get().state
         decision = decide(state, incoming.priority, prefs["urgent_breakthrough"])
         if decision == Decision.DELIVER_NOW and is_stale(
@@ -67,3 +73,27 @@ class IngestService:
             self.notifications.add(event.id)
             self.events.mark_consumed(event.id)
         return event, created, decision
+
+    def _ai_classify(self, incoming: EventIn) -> None:
+        """Run the LLM classifier and fold its verdict into the event: refine
+        priority (never below its current level) and attach a one-line summary
+        for the recap. Best-effort — SafeClassifier never raises."""
+        from app.services.classifier import build_classifier
+
+        classifier = build_classifier()
+        if classifier.primary is None:
+            return  # enabled flag on but no usable key — nothing to do
+        result = classifier.classify(incoming)
+        if result.category == "action_required" or result.urgency >= 8:
+            incoming.priority = EventPriority.URGENT
+            incoming.requires_action = True
+        elif result.urgency >= 5 and incoming.priority == EventPriority.INFORMATIONAL:
+            incoming.priority = EventPriority.ACTIONABLE
+        meta = dict(incoming.metadata or {})
+        meta["ai"] = {
+            "summary": result.summary,
+            "action": result.suggested_action,
+            "urgency": result.urgency,
+            "category": result.category,
+        }
+        incoming.metadata = meta

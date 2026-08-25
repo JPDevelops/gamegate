@@ -35,6 +35,16 @@ async def lifespan(app: FastAPI):
         )
     if db_module._database is None:
         db_module.init_database(settings.db_path)
+    # Load the persisted AI-classifier settings into the environment the
+    # classifier reads, so a key/toggle saved in the dashboard survives restarts.
+    import os
+
+    from app.services.settings_service import SettingsService
+    _ss = SettingsService(db_module.get_database())
+    _key = _ss.get_classifier_key()
+    if _key:
+        os.environ["OPENAI_API_KEY"] = _key
+    os.environ["CLASSIFIER_ENABLED"] = "true" if _ss.get_all()["classifier_enabled"] else "false"
     from app.middleware import reset_rate_limits
     reset_rate_limits()
     yield
