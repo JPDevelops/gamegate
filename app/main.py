@@ -45,9 +45,22 @@ async def lifespan(app: FastAPI):
     if _key:
         os.environ["OPENAI_API_KEY"] = _key
     os.environ["CLASSIFIER_ENABLED"] = "true" if _ss.get_all()["classifier_enabled"] else "false"
+    # Start the local Gmail (IMAP + app password) poller if the user connected it.
+    # Best-effort: a startup hiccup here must never stop the app from serving.
+    try:
+        from app.integrations.gmail_imap import configure as _gmail_configure
+        _addr, _pw = _ss.get_gmail_credentials()
+        _gmail_configure(_addr, _pw, _ss.get_all()["gmail_enabled"])
+    except Exception:  # noqa: BLE001
+        logging.getLogger("gamegate").exception("Gmail IMAP poller failed to start")
     from app.middleware import reset_rate_limits
     reset_rate_limits()
     yield
+    # Stop the Gmail poller cleanly on shutdown.
+    import contextlib
+    with contextlib.suppress(Exception):
+        from app.integrations.gmail_imap import stop as _gmail_stop
+        _gmail_stop()
 
 
 # Interactive docs (/docs, /redoc, /openapi.json) are open by default and would

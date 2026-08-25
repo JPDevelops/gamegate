@@ -530,6 +530,17 @@ async function connAction(id, action) {
     setTimeout(async () => { await refresh(); route(); }, 400);
     return;
   }
+  // Gmail (local IMAP path only — the cloud OAuth path keeps its own link/flow):
+  // "Connect" opens an address + app-password pop-up; "Disconnect" just turns
+  // polling off (the saved app password stays so re-enabling is one click).
+  if (id === "gmail" && cache.connections?.gmail?.kind === "imap") {
+    if (action === "connect") { showGmailModal(); return; }
+    const r = await fetch("/settings/gmail", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false }) });
+    if (!r.ok) alert("Couldn't turn Gmail off.");
+    setTimeout(async () => { await refresh(); route(); }, 400);
+    return;
+  }
   const r = await fetch(`/connectors/${id}/${action}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
   if (body.authorize) { location.href = body.authorize; return; }
@@ -584,6 +595,69 @@ async function saveAiKey(btn) {
     // Rejected/invalid — keep the typed key so they just correct it and retry.
     setStatus(b.detail || "Couldn't save the key.", "#ff6b6b");
     btn.disabled = false; btn.textContent = orig; input.focus(); input.select();
+    return;
+  }
+  const offline = b.note && b.note.toLowerCase().includes("couldn't");
+  setStatus(offline ? b.note : "Connected ✓", offline ? "#e0b64a" : "var(--green, #2ee06f)");
+  setTimeout(() => { overlay.remove(); refresh().then(route); }, 900);
+}
+function showGmailModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "catalog-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const s = cache.userSettings || {};
+  const hasPw = s.gmail_app_password_set;
+  overlay.innerHTML = `<div class="catalog">
+    <h2>Connect Gmail</h2>
+    <div class="muted" style="margin-bottom:12px">GameGate reads your inbox locally over IMAP using a Google <b>app password</b> — no OAuth, nothing leaves this PC. You need 2‑Step Verification on, then create a 16‑character app password at <b>myaccount.google.com/apppasswords</b> and paste it below.</div>
+    <input id="gmAddr" class="setinput" type="email" autocomplete="off" style="width:100%;margin-bottom:8px"
+      placeholder="you@gmail.com" value="${esc(s.gmail_address || "")}">
+    <input id="gmPw" class="setinput" type="password" autocomplete="off" style="width:100%"
+      placeholder="${hasPw ? '•••••••• (saved — paste to replace)' : 'app password (e.g. abcd efgh ijkl mnop)'}">
+    <div id="gmStatus" style="min-height:18px;margin-top:8px;font-size:13px"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px">
+      <button class="btn" onclick="this.closest('.catalog-overlay').remove()">Cancel</button>
+      <button class="btn green" id="gmSaveBtn" onclick="saveGmail(this)">Save &amp; connect</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  const addr = overlay.querySelector("#gmAddr");
+  const pw = overlay.querySelector("#gmPw");
+  (s.gmail_address ? pw : addr).focus();
+  const clearErr = () => { overlay.querySelector("#gmStatus").textContent = ""; };
+  [addr, pw].forEach((el) => {
+    el.addEventListener("input", clearErr);
+    el.addEventListener("keydown", (ev) => { if (ev.key === "Enter") saveGmail(overlay.querySelector("#gmSaveBtn")); });
+  });
+}
+// A rejected login shows an inline error and KEEPS what was typed, so you just
+// fix it and hit Save again — no reset, no re-typing (same as the AI key flow).
+async function saveGmail(btn) {
+  const overlay = btn.closest(".catalog-overlay");
+  const addr = overlay.querySelector("#gmAddr");
+  const pw = overlay.querySelector("#gmPw");
+  const status = overlay.querySelector("#gmStatus");
+  const setStatus = (m, c) => { status.textContent = m; status.style.color = c || "var(--muted, #8a94a6)"; };
+  const address = (addr.value || "").trim();
+  const password = (pw.value || "").trim();
+  const hasPw = cache.userSettings && cache.userSettings.gmail_app_password_set;
+  if (!address) { setStatus("Enter your Gmail address.", "#ff6b6b"); addr.focus(); return; }
+  if (!password && !hasPw) { setStatus("Paste your app password.", "#ff6b6b"); pw.focus(); return; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Checking…"; setStatus("Checking the login…", "");
+  // Omit app_password when it's left blank and one is already saved — keep the stored one.
+  const body = { enabled: true, address };
+  if (password) body.app_password = password;
+  let r, b;
+  try {
+    r = await fetch("/settings/gmail", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    b = await r.json().catch(() => ({}));
+  } catch (e) {
+    setStatus("Couldn't reach GameGate — try again.", "#ff6b6b"); btn.disabled = false; btn.textContent = orig; return;
+  }
+  if (!r.ok) {
+    setStatus(b.detail || "Couldn't connect Gmail.", "#ff6b6b");
+    btn.disabled = false; btn.textContent = orig; pw.focus(); pw.select();
     return;
   }
   const offline = b.note && b.note.toLowerCase().includes("couldn't");
