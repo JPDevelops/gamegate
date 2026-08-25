@@ -25,6 +25,11 @@ DEFS = {
     # address is the user's own email and is safe to return so the UI can show
     # "connected as …".
     "gmail_enabled": {"kind": "bool", "default": False},
+    # Text messages: whether the user has set up phone-text sync (via Windows
+    # Phone Link). There's no credential — texts arrive as captured Windows
+    # notifications; this flag just drives the connector's state + the setup
+    # walkthrough. Turning it off is presentational (capture itself is global).
+    "text_sync_enabled": {"kind": "bool", "default": False},
 }
 VERSION_KEY = "_version"
 CLASSIFIER_KEY_NAME = "classifier_api_key"  # secret; not in DEFS, never returned

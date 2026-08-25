@@ -19,6 +19,9 @@ URGENT_KEYWORDS = ("urgent", "asap", "emergency", "911", "help now")
 # "com.squirrel.Discord.Discord" or exe paths), so the recap says "Discord",
 # not the raw id. First substring match wins.
 _FRIENDLY_NAMES = (
+    # Phone Link (Windows phone sync) surfaces SMS/MMS — show these as "Text".
+    # Match before anything else so a text is never mislabeled by a stray substring.
+    ("yourphone", "Text"), ("phonelink", "Text"), ("phone link", "Text"),
     ("discord", "Discord"), ("slack", "Slack"), ("gmail", "Gmail"),
     ("outlook", "Outlook"), ("teams", "Teams"), ("whatsapp", "WhatsApp"),
     ("telegram", "Telegram"), ("steam", "Steam"), ("epicgames", "Epic Games"),
@@ -61,7 +64,12 @@ _SELF_APP_MARKERS = ("gamegate",)
 
 # Map a source app onto one of GameGate's known EventSource values; anything
 # unrecognized is "system" (a generic captured notification).
+# Phone Link app ids come first so a captured SMS is tagged as a "text" (its own
+# source + filter chip), not lumped in with email.
 _APP_SOURCE = {
+    "yourphone": "text",
+    "phonelink": "text",
+    "phone link": "text",
     "discord": "discord",
     "slack": "slack",
     "gmail": "gmail",

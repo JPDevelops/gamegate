@@ -124,4 +124,49 @@ def test_unknown_connector_is_404(client):
 def test_catalog_present_in_connections(client):
     body = client.get("/connections").json()
     ids = [c["id"] for c in body["catalog"]]
-    assert ids == ["discord", "gmail", "slack", "classifier"]
+    assert ids == ["discord", "gmail", "text", "slack", "classifier"]
+
+
+def _post_text(client, ext="t1"):
+    return client.post("/events", json={
+        "source": "text", "external_id": ext, "sender": "Text", "title": "Mom",
+        "content": "running late", "received_at": "2026-08-25T10:00:00+00:00",
+        "priority": "informational",
+    })
+
+
+def test_text_sync_connector_four_state_model(client):
+    # State 1 — never set up: a setup-walkthrough connector, not a toggle.
+    t = client.get("/connections").json()["text"]
+    assert t["state"] == "disconnected" and t["kind"] == "textsync"
+    assert t["connect_label"] == "Sync text messages"
+
+    # State 2 — enabled but no text captured yet: "waiting", resume at step 2.
+    assert client.post("/settings/text-sync", json={"enabled": True}).json()["enabled"] is True
+    t = client.get("/connections").json()["text"]
+    assert t["state"] == "needs setup" and t["resume_step"] == 2
+    assert t["can_disconnect"] is True
+
+    # State 3 — a text actually arrived: connected.
+    assert _post_text(client).status_code in (200, 201)
+    t = client.get("/connections").json()["text"]
+    assert t["state"] == "connected" and t["can_disconnect"] is True
+
+    # State 4 — turned off but a text exists (phone still paired): resume at step 4.
+    client.post("/settings/text-sync", json={"enabled": False})
+    t = client.get("/connections").json()["text"]
+    assert t["state"] == "needs setup" and t["resume_step"] == 4
+    assert t["connect_label"] == "Turn syncing back on"
+
+
+def test_text_probe_detects_a_text_after_since(client):
+    before = "2026-01-01T00:00:00+00:00"
+    assert client.get("/connectors/text/probe", params={"since": before}).json()["captured"] is False
+    _post_text(client, "probe1")
+    got = client.get("/connectors/text/probe", params={"since": before}).json()
+    assert got["captured"] is True and got["sender"] == "Text"
+    # The wizard takes its wait-baseline from this server clock, not the browser's.
+    assert "now" in got and got["now"]
+    # A baseline AFTER the text must not re-report it (no false positive).
+    later = client.get("/connectors/text/probe", params={"since": got["now"]}).json()
+    assert later["captured"] is False

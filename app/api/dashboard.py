@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import __version__
 from app.api.connectors import service_active
 from app.config import get_settings
+from app.db import get_database
 from app.deps import (
     get_connector_health_repo,
     get_digest_repo,
@@ -227,6 +228,36 @@ def connections(
                       "detail": "Not connected — add your OpenAI API key",
                       "can_connect": True}
 
+    # Text messages (phone SMS via Windows Phone Link). No credential — texts
+    # arrive as captured Windows notifications; the flag records that the user
+    # finished the setup walkthrough. kind:"textsync" tells the UI to open the
+    # walkthrough on Connect instead of a plain toggle. Four honest states based
+    # on (a) the flag and (b) whether a text has EVER been captured.
+    ts_on = prefs.get("text_sync_enabled")
+    last_text = get_database().connection().execute(
+        "SELECT sender, received_at FROM events WHERE source = 'text' "
+        "ORDER BY received_at DESC LIMIT 1"
+    ).fetchone()
+    if ts_on and last_text:
+        _last = f"{last_text['received_at'][:16]}Z"
+        textsync = {"state": "connected", "kind": "textsync",
+                    "detail": f"Syncing texts from your phone · last one {_last}",
+                    "can_disconnect": True}
+    elif ts_on and not last_text:
+        textsync = {"state": "needs setup", "kind": "textsync",
+                    "detail": "Waiting on your phone's first text — finish setup in Phone Link",
+                    "can_connect": True, "connect_label": "Finish setup",
+                    "can_disconnect": True, "resume_step": 2}
+    elif last_text:  # was on before, now off, but the phone is still paired
+        textsync = {"state": "needs setup", "kind": "textsync",
+                    "detail": "Turned off — your phone is still paired in Phone Link",
+                    "can_connect": True, "connect_label": "Turn syncing back on",
+                    "resume_step": 4}
+    else:
+        textsync = {"state": "disconnected", "kind": "textsync",
+                    "detail": "Not set up — bring your phone's texts into GameGate",
+                    "can_connect": True, "connect_label": "Sync text messages"}
+
     # Fold in live heartbeat health: a connected connector whose last poll errored
     # shows as 'degraded', not a green 'connected' flag.
     _apply_health(gmail, health_repo.get("gmail"))
@@ -238,12 +269,14 @@ def connections(
     return {
         "discord": discord,
         "gmail": gmail,
+        "text": textsync,
         "slack": slack,
         "classifier": classifier,
         "agent": agent,
         "catalog": [
             {"id": "discord", "name": "Discord", "desc": "Messages from your server"},
             {"id": "gmail", "name": "Gmail", "desc": "Read-only inbox monitoring"},
+            {"id": "text", "name": "Text Messages", "desc": "Your phone's texts, via Phone Link"},
             {"id": "slack", "name": "Slack", "desc": "Coming in a later version"},
             {"id": "classifier", "name": "AI classifier",
              "desc": "Smart prioritization (with fallback)"},
@@ -258,3 +291,31 @@ def connections(
             "Notification freshness window": f"{prefs['freshness_minutes']} minutes",
         },
     }
+
+
+@router.get("/connectors/text/probe", dependencies=[Depends(require_api_token)])
+def text_probe(since: str = "") -> dict:
+    """Live check for the setup walkthrough: did a phone text (source='text')
+    arrive after `since`? Both `since` and the stored `created_at` are compared
+    as parsed, tz-aware datetimes. IMPORTANT: `since` must be a value the SERVER
+    produced (see the `now` field this returns) — the wizard takes its baseline
+    from `now` rather than the browser clock, so the two sides share one clock
+    and client/server skew can't hide a genuinely new text."""
+    from datetime import UTC, datetime
+
+    now_iso = datetime.now(UTC).isoformat()
+    row = get_database().connection().execute(
+        "SELECT sender, received_at, created_at FROM events WHERE source = 'text' "
+        "ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return {"captured": False, "sender": None, "received_at": None, "now": now_iso}
+    try:
+        seen = datetime.fromisoformat(row["created_at"])
+        after = datetime.fromisoformat(since.replace("Z", "+00:00")) if since else None
+    except ValueError:
+        after = None
+    if after is not None and seen <= after:
+        return {"captured": False, "sender": None, "received_at": None, "now": now_iso}
+    return {"captured": True, "sender": row["sender"],
+            "received_at": row["received_at"], "now": now_iso}
