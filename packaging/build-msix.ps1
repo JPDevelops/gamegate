@@ -103,11 +103,11 @@ Info "Signed $msix"
 
 Write-Host ""
 Write-Host "DONE. Next steps to install on THIS machine:" -ForegroundColor Green
-Write-Host "  1. Trust the dev cert (one time). In an ADMIN PowerShell:" -ForegroundColor Green
+Write-Host "  1. Trust the dev cert (one time only, first install). In an ADMIN PowerShell:" -ForegroundColor Green
 Write-Host "       Import-Certificate -FilePath `"$cerPath`" -CertStoreLocation Cert:\LocalMachine\TrustedPeople"
-Write-Host "  2. Install the app:" -ForegroundColor Green
-Write-Host "       Add-AppxPackage -Path `"$msix`""
-Write-Host "     (or just double-click GameGate.msix once the cert is trusted)."
+Write-Host "  2. Install (this closes a running GameGate + removes the old package for you):" -ForegroundColor Green
+Write-Host "       .\packaging\reinstall.ps1"
+Write-Host "     (reinstall.ps1 avoids the by-hand Add-AppxPackage name gotchas.)"
 Write-Host "  3. Launch GameGate from the Start menu. On first run, say Yes to the"
 Write-Host "     notification consent, then ALLOW the Windows 'access notifications' prompt."
 Write-Host "  4. It will now appear under Settings > Privacy & security > Notifications."
