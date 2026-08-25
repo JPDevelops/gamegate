@@ -88,9 +88,14 @@ def start_local_server(config: dict, db_path: str, save, port: int = DEFAULT_POR
 
     # Pin the pure-Python loop/protocol so the frozen build never needs the
     # optional C extensions (uvloop/httptools) that complicate PyInstaller.
+    # log_config=None is CRITICAL for the packaged (--noconsole) build: uvicorn's
+    # default log config builds a colorized formatter that calls
+    # sys.stdout.isatty(), but a windowed PyInstaller app has sys.stdout = None,
+    # so that raises AttributeError -> "Unable to configure formatter 'default'"
+    # and the server never starts. We use the app's own logging instead.
     server = uvicorn.Server(uvicorn.Config(
         "app.main:app", host=HOST, port=chosen,
-        log_level="warning", access_log=False,
+        log_level="warning", access_log=False, log_config=None,
         loop="asyncio", http="h11", lifespan="on",
     ))
 

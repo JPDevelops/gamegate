@@ -84,3 +84,23 @@ def test_embedded_server_boots_and_serves(tmp_path, monkeypatch):
     with urllib.request.urlopen(f"{base}/health", timeout=3) as resp:
         assert resp.status == 200
         assert b'"status":"ok"' in resp.read().replace(b" ", b"")
+
+
+def test_embedded_server_boots_with_no_stdout(tmp_path, monkeypatch):
+    """The packaged app runs --noconsole, so sys.stdout is None. uvicorn's
+    default log config builds a colorized formatter that calls
+    sys.stdout.isatty() -> AttributeError, so the server must be started with
+    log_config=None. This reproduces that exact condition (which no console-based
+    test otherwise hits) and asserts the server still comes up."""
+    from app import db as db_module
+
+    monkeypatch.setattr(db_module, "_database", None, raising=False)
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    base, _ = local_server.start_local_server(
+        {"api_token": ""}, str(tmp_path / "gg.db"), lambda upd: None,
+    )
+    # Restore stdout so the assertion output is visible.
+    monkeypatch.undo()
+    assert local_server.wait_until_ready(base, timeout=15)
