@@ -30,6 +30,20 @@ def test_map_builds_a_valid_event_payload():
     assert ev["metadata"]["origin"] == "windows-notification"
 
 
+def test_phone_link_texts_map_to_the_text_source():
+    """A phone SMS captured via Windows Phone Link is tagged as its own 'text'
+    source (its own filter chip) and shown as 'Text', not lumped in with email."""
+    # Phone Link's notification handler id is the YourPhone AUMID.
+    assert classify("Microsoft.YourPhone_8wekyb3d8bbwe!App", "Mom", "running late")[0] == "text"
+    ev = map_notification_to_event(
+        "Microsoft.YourPhone_8wekyb3d8bbwe!App", "Mom", "running late",
+        "sms1", "2026-08-25T00:00:00+00:00",
+    )
+    assert ev["source"] == "text"
+    assert ev["sender"] == "Text"          # friendly label
+    assert ev["title"] == "Mom" and ev["content"] == "running late"
+
+
 def test_map_skips_gamegates_own_notifications():
     """Critical: never re-ingest our own overlay/toast, or the app loops forever."""
     assert map_notification_to_event(

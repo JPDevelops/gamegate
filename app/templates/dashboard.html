@@ -224,8 +224,9 @@ const I = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="width:15px;height:15px"><path d="M12 5v14M5 12h14"/></svg>',
   mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.9-.9L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>',
 };
-const SRCICON = { gmail: I.mail, discord: I.chat, slack: I.chat, system: "" };
+const SRCICON = { gmail: I.mail, discord: I.chat, slack: I.chat, text: I.phone, system: "" };
 
 const NAVDEF = [
   { route: "recaps", label: "Game Recaps", icon: I.recaps, title: "Game Recaps" },
@@ -398,12 +399,13 @@ const views = {
         </div>
         <div class="conn-actions" id="acts-${id}" hidden>
           ${s.can_disconnect ? `<button class="btn danger" onclick="event.stopPropagation();connAction('${id}','disconnect')">Disconnect</button>` : ""}
-          ${s.can_connect ? `<button class="btn green" onclick="event.stopPropagation();connAction('${id}','connect')">Connect</button>` : ""}
+          ${s.can_connect ? `<button class="btn green" onclick="event.stopPropagation();connAction('${id}','connect')">${esc(s.connect_label || "Connect")}</button>` : ""}
           ${!s.can_disconnect && !s.can_connect ? `<span class="muted">No actions available</span>` : ""}
         </div>
       </div>`;
     return `<div class="sub">Click a connector to manage it.</div>`
       + conn("discord", "Discord", c.discord) + conn("gmail", "Gmail", c.gmail)
+      + (c.text ? conn("text", "Text Messages", c.text) : "")
       + conn("slack", "Slack", c.slack) + conn("classifier", "AI classifier", c.classifier)
       + `<button class="fab" onclick="showCatalog()">${I.plus} Add a connector</button>`;
   },
@@ -541,6 +543,18 @@ async function connAction(id, action) {
     setTimeout(async () => { await refresh(); route(); }, 400);
     return;
   }
+  // Text messages: "Sync text messages" opens the Phone Link walkthrough;
+  // there's no credential — Disconnect just flips the presentational flag
+  // (the phone stays paired in Phone Link), so we confirm that it's a mute.
+  if (id === "text" && cache.connections?.text?.kind === "textsync") {
+    if (action === "connect") { showTextSyncWizard(cache.connections.text.resume_step || 1); return; }
+    if (!confirm("Stop syncing texts?\n\nYour texts will stop showing up in GameGate. Your phone stays paired in Phone Link, and you can turn this back on any time.")) return;
+    const r = await fetch("/settings/text-sync", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false }) });
+    if (!r.ok) alert("Couldn't update text sync.");
+    setTimeout(async () => { await refresh(); route(); }, 400);
+    return;
+  }
   const r = await fetch(`/connectors/${id}/${action}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
   if (body.authorize) { location.href = body.authorize; return; }
@@ -663,6 +677,169 @@ async function saveGmail(btn) {
   const offline = b.note && b.note.toLowerCase().includes("couldn't");
   setStatus(offline ? b.note : "Connected ✓", offline ? "#e0b64a" : "var(--green, #2ee06f)");
   setTimeout(() => { overlay.remove(); refresh().then(route); }, 900);
+}
+// Phone Link setup walkthrough — 4 steps, no credential. Texts arrive as Windows
+// notifications (Phone Link), which GameGate already captures; this just guides
+// the one-time pairing and confirms the first text lands. Starts at `startStep`
+// (Connect=1, Finish setup=2, Turn back on=4).
+function showTextSyncWizard(startStep) {
+  const overlay = document.createElement("div");
+  overlay.className = "catalog-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  document.body.appendChild(overlay);
+  let phone = "android";          // "android" | "ios" — never persisted
+  let pollTimer = null;
+  let gen = 0;                    // bumped on every render/close; stale poll loops bail on mismatch
+  const FOOTER = `Under the hood this uses Windows Phone Link — Microsoft's built-in phone↔PC sync. GameGate just reads the notifications it produces.`;
+  const foot = `<div style="border-top:1px solid var(--line-soft,#2a2c33);margin-top:14px;padding-top:8px;color:var(--muted,#8a94a6);font-size:11.5px">${FOOTER}</div>`;
+  const counter = (n) => `<span class="muted" style="float:right;font-size:12px">Step ${n} of 4</span>`;
+  const close = () => { gen++; if (pollTimer) clearTimeout(pollTimer); overlay.remove(); };
+  const box = () => overlay.querySelector(".catalog");
+
+  function render(step) {
+    gen++;  // invalidate any in-flight poll loop from the step we're leaving
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    if (step === 1) return step1();
+    if (step === 2) return step2();
+    if (step === 3) return step3();
+    if (step === 4) return step4();
+  }
+
+  function step1() {
+    overlay.innerHTML = `<div class="catalog">
+      <h2>Sync text messages</h2>
+      <div class="muted" style="margin-bottom:12px">Texts are the messages people actually expect you to see. Pair your phone with Windows once, and every text lands in GameGate alongside your email and Discord — quiet while you're gaming, waiting for you in the recap.<br><br>There's nothing to sign into and no password to enter. Takes about two minutes.</div>
+      <div style="font-weight:600;font-size:13.5px;margin-bottom:8px">Which phone do you have?</div>
+      <div class="muted" style="font-size:12px;margin-bottom:12px">Android gets full text sync — read, and reply from Windows. iPhone works over Bluetooth and will show your texts, but Apple limits what other apps can do with them, so you'll get fewer of the extras. Either way, GameGate will see them.</div>
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button class="btn" id="tsCancel">Cancel</button>
+        <button class="btn" id="tsIphone">iPhone</button>
+        <button class="btn green" id="tsAndroid">Android</button>
+      </div>${foot}</div>`;
+    box().querySelector("#tsCancel").onclick = close;
+    box().querySelector("#tsIphone").onclick = () => { phone = "ios"; render(2); };
+    box().querySelector("#tsAndroid").onclick = () => { phone = "android"; render(2); };
+  }
+
+  function step2() {
+    const body = phone === "ios"
+      ? `Phone Link is already on this PC. We'll open it — choose <b>iPhone</b>, then pair over Bluetooth and say yes when your iPhone asks to share notifications and messages.<br><br>Leave this window open. Come back when Phone Link says your iPhone is connected.`
+      : `Phone Link is already on this PC. We'll open it — then follow its prompts: it'll show a QR code, you scan it with your phone's camera, and approve the permissions it asks for.<br><br>Leave this window open. Come back when Phone Link says your phone is connected.`;
+    overlay.innerHTML = `<div class="catalog">
+      <h2>Pair your phone with Windows ${counter(2)}</h2>
+      <div class="muted" style="margin-bottom:8px">${body}</div>
+      <div id="tsStatus" style="min-height:18px;margin-top:8px;font-size:13px"></div>
+      <div class="row" style="justify-content:flex-end;gap:8px;margin-top:6px">
+        <button class="btn" id="tsBack">Back</button>
+        <button class="btn" id="tsPaired">I've already paired</button>
+        <button class="btn green" id="tsOpen">Open Phone Link</button>
+      </div>${foot}</div>`;
+    box().querySelector("#tsBack").onclick = () => render(1);
+    box().querySelector("#tsPaired").onclick = () => render(3);
+    box().querySelector("#tsOpen").onclick = async (e) => {
+      const status = box().querySelector("#tsStatus");
+      let ok = false;
+      try {
+        const r = await fetch("/system/open-phone-link", { method: "POST" });
+        const b = await r.json().catch(() => ({}));
+        ok = r.ok && b.launched !== false;
+      } catch (_) { ok = false; }
+      if (!ok) {
+        status.textContent = `Couldn't open Phone Link. Press the Windows key and type "Phone Link" to open it yourself — then come back here.`;
+        status.style.color = "#ff6b6b";
+      }
+      // Either way, give an obvious way forward.
+      e.target.textContent = "My phone is paired →";
+      e.target.onclick = () => render(3);
+    };
+  }
+
+  function step3() {
+    const iphoneNote = phone === "ios"
+      ? `<div class="muted" style="font-size:12px;margin-top:10px">On iPhone, keep Bluetooth on and your phone nearby — that's the link. If the phone wanders off, texts pause until it's back.</div>`
+      : "";
+    overlay.innerHTML = `<div class="catalog">
+      <h2>Let your texts through ${counter(3)}</h2>
+      <div class="muted">In Phone Link, open <b>Settings → Features → Notifications</b> and switch on <b>Messages</b> and <b>Notifications</b>. Windows may also ask permission the first time a text arrives — say yes.<br><br>That's the whole handshake. Your texts become Windows notifications, and GameGate is already listening for those.</div>
+      ${iphoneNote}
+      <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">
+        <button class="btn" id="tsBack">Back</button>
+        <button class="btn green" id="tsTest">Done — let's test it</button>
+      </div>${foot}</div>`;
+    box().querySelector("#tsBack").onclick = () => render(2);
+    // Enabling happens on step 4 entry (so the "turn syncing back on" resume,
+    // which jumps straight to step 4, also enables — not just this first-run path).
+    box().querySelector("#tsTest").onclick = () => render(4);
+  }
+
+  function step4() {
+    const myGen = gen;
+    const deadline = Date.now() + 90000;
+    let since = new Date().toISOString();  // fallback only if the baseline fetch fails
+    // Turn syncing ON here (so BOTH the first-run path and the "turn back on"
+    // resume — which jumps straight to step 4 — actually enable it), then take
+    // the wait baseline from the SERVER clock so client/server skew can't hide a
+    // genuinely new text. Start polling only once the baseline is in.
+    fetch("/settings/text-sync", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: true }) });
+    waiting();
+    fetch("/connectors/text/probe")
+      .then((r) => r.json()).then((b) => { if (b && b.now) since = b.now; })
+      .catch(() => {})
+      .finally(() => { if (myGen === gen) poll(); });
+
+    function waiting() {
+      overlay.innerHTML = `<div class="catalog">
+        <h2>Send yourself a text ${counter(4)}</h2>
+        <div class="muted">Grab your phone and text yourself anything — "hi" works. We'll watch for it.</div>
+        <div id="tsStatus" style="min-height:18px;margin-top:12px;font-size:13px" class="muted">● Waiting for your first text…</div>
+        <div class="row" style="justify-content:flex-end;gap:8px;margin-top:6px">
+          <button class="btn" id="tsBack">Back</button>
+          <button class="btn" id="tsSkip">Skip the test</button>
+        </div>${foot}</div>`;
+      box().querySelector("#tsBack").onclick = () => render(3);
+      box().querySelector("#tsSkip").onclick = finishAnyway;
+    }
+    async function poll() {
+      let captured = false;
+      try {
+        const r = await fetch(`/connectors/text/probe?since=${encodeURIComponent(since)}`);
+        const b = await r.json().catch(() => ({}));
+        captured = !!b.captured;
+      } catch (_) { /* transient — keep polling */ }
+      // If the user navigated away or closed the wizard while the fetch was in
+      // flight, stop here — never re-arm a detached loop or paint a dead overlay.
+      if (myGen !== gen || !overlay.isConnected) return;
+      if (captured) return success();
+      if (Date.now() > deadline) return timedOut();
+      pollTimer = setTimeout(poll, 2000);
+    }
+    function success() {
+      overlay.innerHTML = `<div class="catalog">
+        <h2>Got it! ✓</h2>
+        <div class="muted"><b>Your text just came through.</b> Your texts are syncing — from here on they'll be triaged with everything else, held quietly while you're in a game, and waiting in your recap when you're out.</div>
+        <div class="row" style="justify-content:flex-end;margin-top:14px">
+          <button class="btn green" id="tsDone">Done</button>
+        </div>${foot}</div>`;
+      box().querySelector("#tsDone").onclick = () => { close(); refresh().then(route); };
+    }
+    function timedOut() {
+      overlay.innerHTML = `<div class="catalog">
+        <h2>Send yourself a text ${counter(4)}</h2>
+        <div id="tsStatus" style="font-size:13px;color:#e0b64a">Nothing yet. Double-check Phone Link shows your phone as connected, and that <b>Messages</b> is switched on under Notifications.</div>
+        <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">
+          <button class="btn" id="tsBack">Back to the steps</button>
+          <button class="btn green" id="tsAgain">Keep waiting</button>
+          <button class="btn" id="tsFin">Finish anyway</button>
+        </div>${foot}</div>`;
+      box().querySelector("#tsBack").onclick = () => render(2);
+      box().querySelector("#tsAgain").onclick = () => render(4);
+      box().querySelector("#tsFin").onclick = finishAnyway;
+    }
+    function finishAnyway() { close(); refresh().then(route); }
+  }
+
+  render(startStep || 1);
 }
 function showCatalog() {
   const c = cache.connections;

@@ -120,6 +120,35 @@ def set_gmail(config: GmailConfig, service: SettingsDep) -> dict:
     }
 
 
+class TextSyncConfig(BaseModel):
+    enabled: bool
+
+
+@router.post("/settings/text-sync")
+def set_text_sync(config: TextSyncConfig, service: SettingsDep) -> dict:
+    """Mark phone-text sync on/off. There's no credential: texts arrive as
+    captured Windows notifications (via Phone Link). This just records that the
+    user finished the setup walkthrough, so the connector shows as active."""
+    service.update({"text_sync_enabled": config.enabled})
+    return {"enabled": service.get_all()["text_sync_enabled"]}
+
+
+@router.post("/system/open-phone-link")
+def open_phone_link() -> dict:
+    """Launch Windows Phone Link (ms-phone:) so the setup walkthrough can open it
+    for the user with one click. Best-effort + Windows-only; a failure just means
+    the user opens it from the Start menu instead."""
+    import sys
+
+    if sys.platform != "win32":
+        return {"launched": False, "detail": "Only available on Windows."}
+    try:
+        os.startfile("ms-phone:")  # noqa: S606 — fixed, non-user-controlled URI
+        return {"launched": True}
+    except Exception as exc:  # noqa: BLE001 — never 500; the wizard has a manual fallback
+        return {"launched": False, "detail": str(exc)[:200]}
+
+
 @router.get("/settings/client")
 def client_settings(service: SettingsDep) -> dict:
     """The subset the PC app applies (sound, overlay duration) + version so

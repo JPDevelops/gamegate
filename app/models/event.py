@@ -9,6 +9,7 @@ class EventSource(str, Enum):
     GMAIL = "gmail"
     SLACK = "slack"
     DISCORD = "discord"
+    TEXT = "text"      # phone SMS/MMS, captured via Windows Phone Link
     SYSTEM = "system"
 
 
