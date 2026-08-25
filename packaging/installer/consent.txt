@@ -1,9 +1,0 @@
-What GameGate does
-
-GameGate watches your Windows notifications - Discord, Slack, email, and anything else that pops up - so it can quietly hold them while you're gaming and hand you one clean recap when you're done.
-
-Your privacy
-
-GameGate runs entirely on THIS computer. It reads your notifications locally, on your PC, to build your recap. Nothing about your notifications is uploaded or leaves your machine.
-
-By clicking Next you agree to let GameGate read your Windows notifications for this purpose. You can pause it from the tray icon, or uninstall it anytime.
