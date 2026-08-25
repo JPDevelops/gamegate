@@ -363,15 +363,21 @@ const views = {
     if (!shown.length) return bar + `<div class="empty">${I.inbox}<br>
       ${msgView === "read" ? "Nothing read yet." : "All caught up — nothing unread."}</div>`;
 
-    const card = (e) => `
+    const card = (e) => {
+      const ai = e.metadata && e.metadata.ai;
+      const aiLine = ai && ai.summary
+        ? `<div class="muted" style="margin-top:3px;color:var(--green,#2ee06f)">🤖 ${esc(ai.summary)}${ai.urgency ? " · urgency " + esc(String(ai.urgency)) + "/10" : ""}</div>`
+        : "";
+      return `
       <div class="card row">
         <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
         <div style="min-width:0"><div class="msg-title">${esc(e.sender)} — ${esc(e.title)}</div>
-        <div class="muted">${SRCICON[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div></div>
+        <div class="muted">${SRCICON[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div>${aiLine}</div>
         ${e.read_at
           ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
           : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
       </div>`;
+    };
     if (msgView === "read") return bar + shown.map(card).join("");
     const section = (title, cls, items) => items.length
       ? `<div class="section-title ${cls}">${title}</div>` + items.map(card).join("") : "";
@@ -534,61 +540,55 @@ function showAiKeyModal() {
   const overlay = document.createElement("div");
   overlay.className = "catalog-overlay";
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  document.body.appendChild(overlay);
-  _aiKeyInputView(overlay);
-}
-function _aiKeyInputView(overlay) {
   const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
   overlay.innerHTML = `<div class="catalog">
     <h2>Connect AI Classifier</h2>
     <div class="muted" style="margin-bottom:12px">Paste your OpenAI API key. It's stored only on this PC and never shown again — only each notification's title and a short snippet are sent to OpenAI. Get a key at platform.openai.com → API keys.</div>
     <input id="aiKeyInput" class="setinput" type="password" autocomplete="off" style="width:100%"
       placeholder="${hasKey ? '•••••••• (saved — paste to replace)' : 'sk-...'}">
-    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:14px">
+    <div id="aiKeyStatus" style="min-height:18px;margin-top:8px;font-size:13px"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px">
       <button class="btn" onclick="this.closest('.catalog-overlay').remove()">Cancel</button>
-      <button class="btn green" onclick="saveAiKey(this)">Save &amp; connect</button>
+      <button class="btn green" id="aiSaveBtn" onclick="saveAiKey(this)">Save &amp; connect</button>
     </div></div>`;
-  const inp = overlay.querySelector("#aiKeyInput"); if (inp) inp.focus();
+  document.body.appendChild(overlay);
+  const inp = overlay.querySelector("#aiKeyInput");
+  if (inp) {
+    inp.focus();
+    // Enter submits; typing after an error clears the error so it isn't stale.
+    inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") saveAiKey(overlay.querySelector("#aiSaveBtn")); });
+    inp.addEventListener("input", () => { overlay.querySelector("#aiKeyStatus").textContent = ""; });
+  }
 }
-// In-app message view inside the SAME styled pop-up (no jarring white browser
-// alert). `back` = OK returns to the key input; otherwise OK closes + refreshes.
-function _aiKeyMessageView(overlay, message, color, back) {
-  overlay.innerHTML = `<div class="catalog">
-    <h2>AI Classifier</h2>
-    <div style="margin:10px 0 18px;font-size:14px;${color ? "color:" + color : ""}">${esc(message)}</div>
-    <div class="row" style="justify-content:flex-end">
-      <button class="btn green" id="aiMsgOk">OK</button>
-    </div></div>`;
-  overlay.querySelector("#aiMsgOk").onclick = () => {
-    if (back) { _aiKeyInputView(overlay); }
-    else { overlay.remove(); refresh().then(route); }
-  };
-}
+// A wrong key shows an inline error and KEEPS what you typed, so you just fix it
+// and hit Save again — no separate screen, no re-typing the whole key.
 async function saveAiKey(btn) {
   const overlay = btn.closest(".catalog-overlay");
-  const key = (overlay.querySelector("#aiKeyInput").value || "").trim();
+  const input = overlay.querySelector("#aiKeyInput");
+  const status = overlay.querySelector("#aiKeyStatus");
+  const setStatus = (m, c) => { status.textContent = m; status.style.color = c || "var(--muted, #8a94a6)"; };
+  const key = (input.value || "").trim();
   const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
-  if (!key && !hasKey) { _aiKeyMessageView(overlay, "Please paste your API key.", "", true); return; }
-  btn.disabled = true; btn.textContent = "Checking key…";
-  const payload = key ? { enabled: true, api_key: key } : { enabled: true };
+  if (!key && !hasKey) { setStatus("Please paste your API key.", "#ff6b6b"); input.focus(); return; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Checking…"; setStatus("Checking your key…", "");
   let r, b;
   try {
     r = await fetch("/settings/classifier", { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(key ? { enabled: true, api_key: key } : { enabled: true }) });
     b = await r.json().catch(() => ({}));
   } catch (e) {
-    _aiKeyMessageView(overlay, "Couldn't reach GameGate. Try again.", "#ff6b6b", true); return;
+    setStatus("Couldn't reach GameGate — try again.", "#ff6b6b"); btn.disabled = false; btn.textContent = orig; return;
   }
   if (!r.ok) {
-    // Rejected key → show it in-app; OK returns to the input so they can retry.
-    _aiKeyMessageView(overlay, b.detail || "Couldn't save the key.", "#ff6b6b", true);
+    // Rejected/invalid — keep the typed key so they just correct it and retry.
+    setStatus(b.detail || "Couldn't save the key.", "#ff6b6b");
+    btn.disabled = false; btn.textContent = orig; input.focus(); input.select();
     return;
   }
-  if (b.note && b.note.toLowerCase().includes("couldn't")) {
-    _aiKeyMessageView(overlay, b.note, "", false);   // saved w/ caveat; OK closes
-  } else {
-    _aiKeyMessageView(overlay, "Connected. GameGate will now prioritize your notifications with AI.", "var(--green, #2ee06f)", false);
-  }
+  const offline = b.note && b.note.toLowerCase().includes("couldn't");
+  setStatus(offline ? b.note : "Connected ✓", offline ? "#e0b64a" : "var(--green, #2ee06f)");
+  setTimeout(() => { overlay.remove(); refresh().then(route); }, 900);
 }
 function showCatalog() {
   const c = cache.connections;

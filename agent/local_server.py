@@ -34,20 +34,25 @@ def _is_placeholder(token: str) -> bool:
     return (not token) or token.startswith(_PLACEHOLDER_PREFIXES)
 
 
-def find_free_port(preferred: int = DEFAULT_PORT) -> int:
-    """Return `preferred` if it's bindable, otherwise an OS-assigned free port.
+def find_free_port(preferred: int = DEFAULT_PORT, wait_attempts: int = 12) -> int:
+    """Return the STABLE preferred port, waiting briefly for it to free up.
 
-    There's a tiny window between closing this probe socket and uvicorn binding,
-    but on single-user localhost that race is harmless (worst case uvicorn errors
-    and the app restarts)."""
-    for candidate in (preferred, 0):
+    Stability matters: the dashboard window is a separate process that connects
+    to this port, so if the port changed on every restart, an open window (or an
+    auto-update restart) would point at a dead port ("couldn't reach GameGate").
+    On restart the previous instance releases the port within a moment, so we
+    retry `preferred` for a few seconds before falling back to an OS-assigned
+    port (only if something else is genuinely squatting on it)."""
+    for _ in range(wait_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             try:
-                probe.bind((HOST, candidate))
-                return probe.getsockname()[1]
+                probe.bind((HOST, preferred))
+                return preferred
             except OSError:
-                continue
-    return preferred
+                time.sleep(0.5)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind((HOST, 0))  # last resort: any free port
+        return probe.getsockname()[1]
 
 
 def ensure_local_token(config: dict, save) -> str:

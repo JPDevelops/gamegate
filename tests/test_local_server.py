@@ -34,7 +34,7 @@ def test_find_free_port_falls_back_when_taken():
         taken.bind(("127.0.0.1", 0))
         taken.listen()
         busy = taken.getsockname()[1]
-        got = local_server.find_free_port(busy)
+        got = local_server.find_free_port(busy, wait_attempts=1)  # don't wait out retries
         assert got != busy
         # And the returned port is actually bindable.
         with socket.socket() as probe:
