@@ -448,17 +448,6 @@ const views = {
         <input class="setinput" style="margin-top:8px" value="${esc(s.urgent_keywords.join(", "))}"
           onchange="setSetting('urgent_keywords', this.value.split(',').map(x=>x.trim()).filter(Boolean))"></div></div>
     </div>
-    <div class="section-title">AI Classifier</div>
-    <div class="card">
-      <div class="setrow"><div class="lbl"><div>Smart prioritizing (AI)</div>
-        <div class="muted">Let an AI score each notification (needs you now vs. can wait) and add a one-line summary. Your key stays on this PC; only the title + a short snippet is sent to the AI. Off = simple keyword rules.</div></div>
-        <div class="switch ${s.classifier_enabled ? "on" : ""}" onclick="toggleClassifier()"></div></div>
-      <div class="setrow"><div class="lbl"><div>OpenAI API key</div>
-        <div class="muted">${s.classifier_api_key_set ? "A key is saved. Paste a new one to replace it, or clear the box and leave to keep it." : "Paste your OpenAI key (sk-…) — get one at platform.openai.com. Needed for AI mode."}</div>
-        <input class="setinput" style="margin-top:8px" type="password" autocomplete="off"
-          placeholder="${s.classifier_api_key_set ? "•••••••••••• (saved)" : "sk-..."}"
-          onchange="setClassifierKey(this.value)"></div></div>
-    </div>
     <div class="section-title">Appearance</div>
     <div class="card">
       <div class="setrow"><div class="lbl"><div>Dark mode</div>
@@ -478,22 +467,6 @@ async function setSetting(key, value) {
   const r = await fetch("/settings", { method: "PUT",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) });
   if (!r.ok) { const b = await r.json().catch(() => ({})); alert(b.detail || "Invalid value"); }
-  await refresh(); route();
-}
-async function toggleClassifier() {
-  const on = cache.userSettings.classifier_enabled;
-  const r = await fetch("/settings/classifier", { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: !on }) });
-  if (!r.ok) { alert("Could not update the AI setting"); return; }
-  await refresh(); route();
-}
-async function setClassifierKey(key) {
-  key = (key || "").trim();
-  if (!key) return;   // blank change = keep the existing key
-  const on = cache.userSettings.classifier_enabled;
-  const r = await fetch("/settings/classifier", { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on, api_key: key }) });
-  if (!r.ok) { alert("Could not save the key"); return; }
   await refresh(); route();
 }
 async function toggleDnd() {
@@ -541,11 +514,50 @@ function toggleConn(id) {
   if (el) el.hidden = !el.hidden;
 }
 async function connAction(id, action) {
+  // The AI classifier needs a key, so its "Connect" opens a key pop-up instead
+  // of the plain connector toggle; "Disconnect" just turns AI off.
+  if (id === "classifier") {
+    if (action === "connect") { showAiKeyModal(); return; }
+    const r = await fetch("/settings/classifier", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false }) });
+    if (!r.ok) alert("Couldn't turn the AI off.");
+    setTimeout(async () => { await refresh(); route(); }, 400);
+    return;
+  }
   const r = await fetch(`/connectors/${id}/${action}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
   if (body.authorize) { location.href = body.authorize; return; }
   if (!r.ok) { alert(body.detail || "That didn't work."); }
   setTimeout(async () => { await refresh(); route(); }, 800);
+}
+function showAiKeyModal() {
+  const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
+  const overlay = document.createElement("div");
+  overlay.className = "catalog-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="catalog">
+    <h2>Connect AI Classifier</h2>
+    <div class="muted" style="margin-bottom:12px">Paste your OpenAI API key. It's stored only on this PC and never shown again — only each notification's title and a short snippet are sent to OpenAI. Get a key at platform.openai.com → API keys.</div>
+    <input id="aiKeyInput" class="setinput" type="password" autocomplete="off" style="width:100%"
+      placeholder="${hasKey ? '•••••••• (saved — paste to replace)' : 'sk-...'}">
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:14px">
+      <button class="btn" onclick="this.closest('.catalog-overlay').remove()">Cancel</button>
+      <button class="btn green" onclick="saveAiKey(this)">Save &amp; connect</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  const inp = overlay.querySelector("#aiKeyInput"); if (inp) inp.focus();
+}
+async function saveAiKey(btn) {
+  const overlay = btn.closest(".catalog-overlay");
+  const key = (overlay.querySelector("#aiKeyInput").value || "").trim();
+  const hasKey = cache.userSettings && cache.userSettings.classifier_api_key_set;
+  if (!key && !hasKey) { alert("Please paste your API key."); return; }
+  const payload = key ? { enabled: true, api_key: key } : { enabled: true };
+  const r = await fetch("/settings/classifier", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!r.ok) { alert("Couldn't save the key."); return; }
+  overlay.remove();
+  await refresh(); route();
 }
 function showCatalog() {
   const c = cache.connections;

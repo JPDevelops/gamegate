@@ -197,15 +197,21 @@ def connections(
         else {"state": "disabled", "detail": "Skipped for now (product decision)"}
     )
 
-    classifier = (
-        {"state": "connected",
-         "detail": f"Model: {os.environ.get('CLASSIFIER_MODEL', 'gpt-4o-mini')} — "
-                   "deterministic fallback always on",
-         "can_disconnect": True}
-        if os.environ.get("CLASSIFIER_ENABLED", "").lower() == "true"
-        else {"state": "disconnected", "detail": "Deterministic rules only",
-              "can_connect": True}
-    )
+    _cls = settings_service.get_all()
+    if _cls["classifier_enabled"] and _cls["classifier_api_key_set"]:
+        classifier = {
+            "state": "connected",
+            "detail": f"AI on — {os.environ.get('CLASSIFIER_MODEL', 'gpt-4o-mini')} "
+                      "(falls back to rules if it's ever unavailable)",
+            "can_disconnect": True,
+        }
+    elif _cls["classifier_api_key_set"]:
+        classifier = {"state": "needs setup", "detail": "Key saved, but AI is turned off",
+                      "can_connect": True, "can_disconnect": True}
+    else:
+        classifier = {"state": "disconnected",
+                      "detail": "Not connected — add your OpenAI API key",
+                      "can_connect": True}
 
     # Fold in live heartbeat health: a connected connector whose last poll errored
     # shows as 'degraded', not a green 'connected' flag.
