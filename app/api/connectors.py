@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import Annotated
 
@@ -31,6 +32,9 @@ log = logging.getLogger("gamegate.connectors")
 router = APIRouter(dependencies=[Depends(require_api_token)])
 
 ENV_PATH = Path(os.environ.get("GAMEGATE_ENV_FILE", ".env"))
+
+# Serializes concurrent update_env_var() calls within this process (all OSes).
+_ENV_WRITE_LOCK = threading.Lock()
 
 # The env flag each connector self-gates on.
 ENABLED_FLAG = {"gmail": "GMAIL_ENABLED", "discord": "GAMEGATE_DISCORD_ENABLED"}
@@ -92,36 +96,41 @@ def update_env_var(key: str, value: str) -> None:
     if not ENV_PATH.exists():
         return
     lock_path = ENV_PATH.with_name(ENV_PATH.name + ".lock")
-    lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
-    try:
-        if fcntl is not None:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocks until we hold the lock
-        # On Windows (no fcntl) local mode is single-process, so the flock is a
-        # no-op; the atomic temp-file swap below still prevents a torn .env.
-        lines = ENV_PATH.read_text().splitlines()  # re-read INSIDE the lock
-        new_line = f"{key}={_quote_env_value(value)}"
-        replaced = False
-        for i, line in enumerate(lines):
-            if _is_active_assignment(line, key):
-                lines[i] = new_line
-                replaced = True
-        if not replaced:
-            lines.append(new_line)
-        # Unique temp file in the same dir so two writers never collide on one
-        # fixed name; 0600 from creation (mkstemp) — never umask-widened.
-        fd, tmp_name = tempfile.mkstemp(dir=str(ENV_PATH.parent), prefix=".env.", suffix=".tmp")
+    # In-process lock serializes concurrent writer THREADS on EVERY platform.
+    # Windows has no fcntl, and Windows os.replace() also fails with a
+    # PermissionError if another thread holds the target open — so this threading
+    # lock (not flock) is what keeps concurrent toggles from losing an update or
+    # racing on the temp file there. On POSIX the flock below ALSO guards the
+    # cross-PROCESS case (multiple connector services).
+    with _ENV_WRITE_LOCK:
+        lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
         try:
-            with os.fdopen(fd, "w") as f:
-                f.write("\n".join(lines) + "\n")
-            os.replace(tmp_name, ENV_PATH)  # atomic swap; never a truncated .env
-        except BaseException:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_name)  # don't leave a stray temp on failure
-            raise
-    finally:
-        if fcntl is not None:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)
+            if fcntl is not None:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocks until we hold the lock
+            lines = ENV_PATH.read_text().splitlines()  # re-read INSIDE the lock
+            new_line = f"{key}={_quote_env_value(value)}"
+            replaced = False
+            for i, line in enumerate(lines):
+                if _is_active_assignment(line, key):
+                    lines[i] = new_line
+                    replaced = True
+            if not replaced:
+                lines.append(new_line)
+            # Unique temp file in the same dir so two writers never collide on one
+            # fixed name; 0600 from creation (mkstemp) — never umask-widened.
+            fd, tmp_name = tempfile.mkstemp(dir=str(ENV_PATH.parent), prefix=".env.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write("\n".join(lines) + "\n")
+                os.replace(tmp_name, ENV_PATH)  # atomic swap; never a truncated .env
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_name)  # don't leave a stray temp on failure
+                raise
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
 
 
 def _revoke_google_grant(token_path: Path) -> bool:
