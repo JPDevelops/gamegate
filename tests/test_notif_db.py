@@ -113,3 +113,17 @@ def test_reader_no_db_is_safe(tmp_path, monkeypatch):
     reader = notif_db.NotificationDbReader(lambda p: True)
     assert reader._max_order() == 0
     reader._poll_once()   # must not raise
+
+
+def test_payload_preview_decodes_and_truncates():
+    import gzip
+    assert notif_db.payload_preview(None) == "<empty>"
+    assert notif_db.payload_preview(b"") == "<empty>"
+    # plain XML bytes → readable, whitespace collapsed
+    xml = b"<toast>\n  <visual>hi</visual>\n</toast>"
+    assert notif_db.payload_preview(xml) == "<toast> <visual>hi</visual> </toast>"
+    # gzip is transparently decompressed (same path as parse_payload)
+    assert "secret" in notif_db.payload_preview(gzip.compress(b"<t>secret</t>"))
+    # long input is truncated with an ellipsis
+    long = notif_db.payload_preview(b"a" * 1000, limit=50)
+    assert len(long) == 51 and long.endswith("…")

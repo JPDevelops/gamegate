@@ -79,6 +79,25 @@ def parse_payload(payload) -> tuple[str, str]:
     return texts[0], "\n".join(texts[1:])
 
 
+def payload_preview(payload, limit: int = 400) -> str:
+    """A short, readable view of a raw notification payload — for diagnosing why
+    a notification produced no text (e.g. Phone Link message toasts, whose XML
+    schema we may not extract yet). Decodes gzip/bytes like parse_payload does,
+    collapses whitespace, and truncates. Only logged for SKIPPED notifications."""
+    raw = payload
+    if isinstance(raw, memoryview):
+        raw = raw.tobytes()
+    if isinstance(raw, bytes):
+        if raw[:2] == b"\x1f\x8b":  # gzip magic
+            with contextlib.suppress(OSError, EOFError):
+                raw = gzip.decompress(raw)
+        raw = raw.decode("utf-8", "replace")
+    text = " ".join(str(raw or "").split())
+    if not text:
+        return "<empty>"
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
 class NotificationDbReader:
     """Poll wpndatabase.db and post each NEW toast to GameGate as an event.
 
@@ -177,8 +196,8 @@ class NotificationDbReader:
 
     def _poll_once(self) -> None:
         rows = self._query(
-            'SELECT n."Order" AS ord, n.Payload AS payload, n.ArrivalTime AS arrival, '
-            "h.PrimaryId AS app "
+            'SELECT n."Order" AS ord, n.Payload AS payload, n.Type AS ntype, '
+            "n.ArrivalTime AS arrival, h.PrimaryId AS app "
             "FROM Notification n "
             "LEFT JOIN NotificationHandler h ON n.HandlerId = h.RecordId "
             'WHERE n."Order" > ? ORDER BY n."Order"',
@@ -192,7 +211,11 @@ class NotificationDbReader:
             app = row["app"] or ""
             title, body = parse_payload(row["payload"])
             if not (title or body):
-                log.info("  order %d from %r: no text (tile/badge) — skipped", order, app)
+                # Log the type + a payload preview so a genuinely-texted message
+                # that we failed to parse (vs. a real tile/badge) is diagnosable
+                # from the log alone — no need to crack open wpndatabase.db.
+                log.info("  order %d from %r (type %s): no text — skipped; payload=%s",
+                         order, app, row["ntype"], payload_preview(row["payload"]))
                 continue
             payload = map_notification_to_event(
                 app, title, body, str(order), filetime_to_iso(row["arrival"] or 0)
