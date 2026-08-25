@@ -274,10 +274,8 @@ def connections(
         "classifier": classifier,
         "agent": agent,
         "catalog": [
-            {"id": "discord", "name": "Discord", "desc": "Messages from your server"},
             {"id": "gmail", "name": "Gmail", "desc": "Read-only inbox monitoring"},
             {"id": "text", "name": "Text Messages", "desc": "Your phone's texts, via Phone Link"},
-            {"id": "slack", "name": "Slack", "desc": "Coming in a later version"},
             {"id": "classifier", "name": "AI classifier",
              "desc": "Smart prioritization (with fallback)"},
         ],
