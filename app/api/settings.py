@@ -192,6 +192,24 @@ def get_phone_link() -> dict:
     return _startfile(_PHONE_LINK_STORE)
 
 
+class BannerSuppressConfig(BaseModel):
+    enabled: bool
+
+
+@router.post("/settings/notifications-suppress")
+def set_banner_suppression(config: BannerSuppressConfig, service: SettingsDep) -> dict:
+    """Silence duplicate pop-ups: mute (or restore) the native Windows banner for
+    the messaging apps GameGate surfaces, so the user is pinged once — by
+    GameGate — not twice. The notifications are STILL captured (only the banner
+    is muted). Applied immediately + persisted so it survives restarts. Windows-
+    only; a no-op elsewhere."""
+    from app.services.notification_banners import apply as apply_banners
+
+    service.update({"suppress_source_banners": config.enabled})
+    affected = apply_banners(config.enabled)
+    return {"enabled": config.enabled, "affected": affected}
+
+
 @router.get("/settings/client")
 def client_settings(service: SettingsDep) -> dict:
     """The subset the PC app applies (sound, overlay duration) + version so

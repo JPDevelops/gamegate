@@ -30,6 +30,10 @@ DEFS = {
     # notifications; this flag just drives the connector's state + the setup
     # walkthrough. Turning it off is presentational (capture itself is global).
     "text_sync_enabled": {"kind": "bool", "default": False},
+    # Silence duplicate pop-ups: mute Windows' own banner for the messaging apps
+    # GameGate surfaces (so you're pinged once, by GameGate, not twice). The
+    # notifications are still captured — only the native banner is muted.
+    "suppress_source_banners": {"kind": "bool", "default": False},
 }
 VERSION_KEY = "_version"
 CLASSIFIER_KEY_NAME = "classifier_api_key"  # secret; not in DEFS, never returned
