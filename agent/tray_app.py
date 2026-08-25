@@ -591,8 +591,9 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
             duration_s=pump.duration_s, sound=pump.sound,
         )
 
-    # Shared update state, filled by update_check_loop. None = not checked yet.
-    update_status = {"count": None}
+    # Shared update state, filled by the update loops. count None = not checked
+    # yet; "available" holds (tag, url) for the frozen self-updater to apply.
+    update_status = {"count": None, "available": None}
 
     def update_item_text(_item) -> str:
         count = update_status["count"]
@@ -609,6 +610,18 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
     def on_update(icon, _item):
         if not update_status["count"]:
             return  # nothing to update — the item is disabled anyway
+        # Frozen build: apply the update the auto-loop already found (same path as
+        # the pop-up's "Update now"), so the tray item works too.
+        avail = update_status.get("available")
+        if getattr(sys, "frozen", False) and avail:
+            from updater import apply_update
+            notify("GameGate", "Updating — the app will restart itself shortly.",
+                   duration_s=pump.duration_s, sound=False)
+            if apply_update(*avail):
+                stop.set()
+                icon.stop()
+            return
+        # Dev/source checkout: the git-based updater script.
         notify(
             "GameGate", "Updating — the app will restart itself in about a minute.",
             duration_s=pump.duration_s, sound=False,
@@ -681,25 +694,48 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
         """Downloaded/installed builds self-update from GitHub Releases: check on
         startup, then periodically. When a newer version is applied, quit so the
         running exe is released and the swap can relaunch the new one."""
-        from updater import AGENT_VERSION, check_and_update
+        from updater import AGENT_VERSION, apply_update, available_update
         # count stays None until the first check completes, so the tray shows
-        # "Checking for updates…" first and only then "Latest version" (not the
-        # old behaviour of jumping straight to "Latest version").
+        # "Checking for updates…" first and only then "Latest version".
         stop.wait(15)  # let the app settle before touching the network
         while not stop.is_set():
             try:
-                if check_and_update():
-                    log.info("Update downloaded — restarting to apply")
-                    stop.set()
-                    icon.stop()
-                    return
-                # Up to date: reflect it in the tray AND report to the server so
-                # the dashboard shows the version instead of a stuck "checking".
-                update_status["count"] = 0
-                with contextlib.suppress(Exception):
-                    icon.update_menu()
-                with contextlib.suppress(Exception):
-                    api.report_update_status(0, build_info(), AGENT_VERSION)
+                info = available_update()
+                if info:
+                    tag, url = info
+                    update_status["count"] = 1
+                    update_status["available"] = (tag, url)
+                    with contextlib.suppress(Exception):
+                        icon.update_menu()
+                    with contextlib.suppress(Exception):
+                        api.report_update_status(1, build_info(), AGENT_VERSION)
+                    # Never throw an update box over a live game (the exact thing
+                    # GameGate exists to prevent) — wait for a non-gaming moment.
+                    status = api.get_status()
+                    if status and status.get("state") == "gaming":
+                        stop.wait(1800)  # re-check in 30 min
+                        continue
+                    # Ask, don't just close-and-swap. Update now → apply + quit so
+                    # the swap can relaunch; Later → snooze a few hours.
+                    if show_update_prompt(version=tag):
+                        if apply_update(tag, url):
+                            log.info("Update accepted — restarting to apply")
+                            stop.set()
+                            icon.stop()
+                            return
+                    else:
+                        log.info("User chose Later on update %s; snoozing", tag)
+                        stop.wait(4 * 3600)
+                        continue
+                else:
+                    # Up to date: reflect it in the tray AND report to the server
+                    # so the dashboard shows the version, not a stuck "checking".
+                    update_status["count"] = 0
+                    update_status["available"] = None
+                    with contextlib.suppress(Exception):
+                        icon.update_menu()
+                    with contextlib.suppress(Exception):
+                        api.report_update_status(0, build_info(), AGENT_VERSION)
             except Exception:
                 log.exception("Auto-update check failed")
             stop.wait(6 * 3600)  # re-check every 6 hours

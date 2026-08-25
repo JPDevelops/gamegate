@@ -274,15 +274,17 @@ def _show_overlay(
         return False
 
 
-def show_update_prompt(change_count: int) -> bool:
+def show_update_prompt(change_count: int = 0, version: str | None = None) -> bool:
     """Public entry: serialize rendering so it never coexists with an overlay."""
     with _ui_lock:
-        return _show_update_prompt(change_count)
+        return _show_update_prompt(change_count, version)
 
 
-def _show_update_prompt(change_count: int) -> bool:
+def _show_update_prompt(change_count: int, version: str | None = None) -> bool:
     """'Update available' card with real buttons (Jules' spec). Returns True
-    for Update now, False for Later/dismiss. Blocking; call from a worker."""
+    for Update now, False for Later/dismiss. Blocking; call from a worker.
+    `version` (e.g. 'v0.5.5') gives a nicer message for the packaged app;
+    otherwise it falls back to the dev 'N new changes' wording."""
     try:
         import tkinter as tk
 
@@ -304,9 +306,12 @@ def _show_update_prompt(change_count: int) -> bool:
             root, text="Update available", bg=BG, fg=FG_TITLE,
             font=("Segoe UI", -px(16), "bold"), anchor="w",
         ).pack(fill="x", padx=px(18), pady=(px(16), px(2)))
+        body_text = (
+            f"{version} is ready to install." if version
+            else f"{change_count} new change{'s' if change_count != 1 else ''} ready to install."
+        )
         tk.Label(
-            root,
-            text=f"{change_count} new change{'s' if change_count != 1 else ''} ready to install.",
+            root, text=body_text,
             bg=BG, fg=FG_BODY, font=("Segoe UI", -px(12)), anchor="w",
         ).pack(fill="x", padx=px(18))
 

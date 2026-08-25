@@ -51,3 +51,33 @@ def test_update_clears_marker_once_current(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "latest_release", lambda: ("v0.3.5", "http://x/GameGate.exe"))
     assert updater.check_and_update("0.3.5") is False   # up to date
     assert not mp.exists()                              # stale marker cleared
+
+
+def test_available_update_checks_without_applying(monkeypatch, tmp_path):
+    """available_update returns the (tag, url) to OFFER but never downloads or
+    records an attempt — so a user who's only being *asked* isn't marked as
+    having tried (that would wrongly suppress the re-offer)."""
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "_marker_path", lambda: tmp_path / "mark.json")
+    monkeypatch.setattr(updater, "latest_release", lambda: ("v9.9.9", "http://x/GameGate.exe"))
+    swaps = []
+    monkeypatch.setattr(updater, "_download_and_launch_swap", lambda url: swaps.append(url) or True)
+
+    info = updater.available_update("0.3.5")
+    assert info == ("v9.9.9", "http://x/GameGate.exe")
+    assert swaps == []                                   # nothing downloaded/applied
+    assert not (tmp_path / "mark.json").exists()         # no attempt recorded on a mere check
+
+    # Up to date → None.
+    monkeypatch.setattr(updater, "latest_release", lambda: ("v0.3.5", "http://x/GameGate.exe"))
+    assert updater.available_update("0.3.5") is None
+
+
+def test_apply_update_records_then_swaps(monkeypatch, tmp_path):
+    mp = tmp_path / "mark.json"
+    monkeypatch.setattr(updater, "_marker_path", lambda: mp)
+    swaps = []
+    monkeypatch.setattr(updater, "_download_and_launch_swap", lambda url: swaps.append(url) or True)
+    assert updater.apply_update("v9.9.9", "http://x/GameGate.exe") is True
+    assert swaps == ["http://x/GameGate.exe"]
+    assert mp.exists()                                   # attempt recorded before swap

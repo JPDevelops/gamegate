@@ -25,7 +25,7 @@ from pathlib import Path
 log = logging.getLogger("gamegate.updater")
 
 # Bumped every release; the tag on GitHub (vX.Y.Z) is compared against this.
-AGENT_VERSION = "0.5.4"
+AGENT_VERSION = "0.5.5"
 
 REPO = "JPDevelops/gamegate"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -94,36 +94,55 @@ def _clear_marker() -> None:
         _marker_path().unlink(missing_ok=True)
 
 
-def check_and_update(current: str = AGENT_VERSION) -> bool:
-    """Check once; if a newer release exists, download it and launch the swap.
-    Returns True if an update is being applied (caller should then quit so the
-    running exe is released). Safe/no-op on any error or for a non-frozen run.
-
-    Loop-proof: records each attempt; if we're still on the old version after
-    recently attempting the SAME target, it backs off instead of re-applying —
-    so a swap that fails to stick can never spin the app in a restart loop."""
+def available_update(current: str = AGENT_VERSION) -> tuple[str, str] | None:
+    """Return (tag, url) for a newer release worth OFFERING the user, or None.
+    Does NOT download or apply anything — it only checks. Non-frozen runs return
+    None (dev uses the git updater). Loop-proof: won't re-offer a tag we recently
+    tried that didn't stick (so a bad swap can't spin a re-prompt loop); clears
+    the marker when we're already current."""
     if not getattr(sys, "frozen", False):
-        return False  # dev/source run — the git updater handles that
+        return None
     try:
         info = latest_release()
         if not info:
-            return False
+            return None
         tag, url = info
         if parse_version(tag) <= parse_version(current):
             log.info("GameGate is up to date (have %s, latest %s)", current, tag)
             _clear_marker()  # we're current — a prior attempt succeeded/moot
-            return False
+            return None
         if _attempted_recently(tag):
             log.warning(
-                "Update to %s was attempted recently but we're still on %s — backing "
-                "off for now to avoid a restart loop (will retry later).", tag, current)
-            return False
-        log.info("Update available %s -> %s; downloading", current, tag)
-        _record_attempt(tag)  # mark BEFORE applying, so a failed swap can't loop
+                "Update to %s was attempted recently but we're still on %s — not "
+                "re-offering yet (avoids a restart/re-prompt loop).", tag, current)
+            return None
+        return tag, url
+    except Exception:  # noqa: BLE001 — a check failure must never crash the app
+        log.exception("Update check failed")
+        return None
+
+
+def apply_update(tag: str, url: str) -> bool:
+    """Download the update and launch the self-replace swap. Records the attempt
+    FIRST (loop-proof marker) so a swap that fails to stick can't loop. Returns
+    True if the swap was launched (the caller should then quit)."""
+    log.info("Applying update -> %s", tag)
+    _record_attempt(tag)  # mark BEFORE applying, so a failed swap can't loop
+    try:
         return _download_and_launch_swap(url)
     except Exception:  # noqa: BLE001 — an update failure must never crash the app
-        log.exception("Update check failed")
+        log.exception("Update apply failed")
         return False
+
+
+def check_and_update(current: str = AGENT_VERSION) -> bool:
+    """Back-compat: check + auto-apply with no prompt. Returns True if an update
+    is being applied (caller should quit). The tray now prompts the user instead
+    (available_update + apply_update), but this stays for any silent-update path."""
+    info = available_update(current)
+    if not info:
+        return False
+    return apply_update(*info)
 
 
 def _download_and_launch_swap(url: str) -> bool:
