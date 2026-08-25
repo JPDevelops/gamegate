@@ -9,10 +9,51 @@ lazy-imported and guarded, so importing this module is safe on any OS and the
 pure mapping helpers below are unit-tested on Linux.
 """
 import logging
+import unicodedata
 
 log = logging.getLogger("gamegate.winnotif")
 
 URGENT_KEYWORDS = ("urgent", "asap", "emergency", "911", "help now")
+
+# Clean, human names for the app ids Windows records (AUMIDs like
+# "com.squirrel.Discord.Discord" or exe paths), so the recap says "Discord",
+# not the raw id. First substring match wins.
+_FRIENDLY_NAMES = (
+    ("discord", "Discord"), ("slack", "Slack"), ("gmail", "Gmail"),
+    ("outlook", "Outlook"), ("teams", "Teams"), ("whatsapp", "WhatsApp"),
+    ("telegram", "Telegram"), ("steam", "Steam"), ("epicgames", "Epic Games"),
+    ("spotify", "Spotify"), ("msedge", "Edge"), ("chrome", "Chrome"),
+    ("firefox", "Firefox"), ("mail", "Mail"),
+)
+
+
+def friendly_app_name(app: str) -> str:
+    """A readable app name from a Windows AUMID or exe path."""
+    low = (app or "").lower()
+    for key, name in _FRIENDLY_NAMES:
+        if key in low:
+            return name
+    # Fallback: last path/dotted segment, minus .exe, e.g.
+    # "com.squirrel.Discord.Discord" -> "Discord"; "C:\\x\\Foo.exe" -> "Foo".
+    token = (app or "").replace("/", "\\").split("\\")[-1]
+    if token.lower().endswith(".exe"):
+        token = token[:-4]
+    if "." in token:
+        token = token.split(".")[-1]
+    return token or (app or "")
+
+
+def clean_text(text: str) -> str:
+    """Strip the invisible bidi/format control characters apps embed (e.g.
+    Discord wraps names in U+2068 FSI / U+2069 PDI, which render as gibberish),
+    plus other control chars, keeping normal whitespace."""
+    if not text:
+        return ""
+    kept = [
+        ch for ch in text
+        if ch in ("\n", "\t") or unicodedata.category(ch) not in ("Cc", "Cf")
+    ]
+    return "".join(kept).strip()
 
 # GameGate's OWN overlay/toast shows up in the Windows notification center too;
 # we must never re-ingest it or the app would notify itself in an endless loop.
@@ -53,16 +94,17 @@ def map_notification_to_event(
         return None
     if any(marker in app_name.lower() for marker in _SELF_APP_MARKERS):
         return None  # never re-ingest GameGate's own notification (would loop)
-    title = (title or "").strip()
-    body = (body or "").strip()
+    title = clean_text(title)
+    body = clean_text(body)
     if not title and not body:
         return None
-    source, priority = classify(app_name, title, body)
+    source, priority = classify(app_name, title, body)  # match on the raw app id
+    sender = friendly_app_name(app_name)                 # but SHOW a clean name
     return {
         "source": source,
         "external_id": f"win-{notif_id}",   # stable id → idempotent across polls
-        "sender": app_name,
-        "title": (title or app_name)[:200],
+        "sender": sender,
+        "title": (title or sender)[:200],
         "content": body[:2000],
         "received_at": received_iso,
         "priority": priority,
