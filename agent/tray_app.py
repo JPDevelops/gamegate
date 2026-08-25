@@ -141,14 +141,22 @@ class FullApiClient(ApiClient):
         """Ingest a captured event (e.g. a Windows notification) into GameGate."""
         return self._post_json("/events", payload)
 
-    def report_update_status(self, count: int, build: str, version: str = "") -> bool:
-        """Tell the server how many updates are pending + this build + the app
-        version, so the dashboard can show 'Latest version' / 'Update available'
-        AND the real version number instead of the stale package version."""
+    def report_update_status(
+        self, count: int, build: str, version: str = "", available_version: str = ""
+    ) -> bool:
+        """Tell the server the pending count + build + running version + the
+        version available to update TO, so the dashboard can show the real
+        version and pop an in-app 'Update available' box."""
         return self._post_json(
             "/agent/update-status",
-            {"pending": int(count), "build": build, "version": version},
+            {"pending": int(count), "build": build, "version": version,
+             "available_version": available_version},
         )
+
+    def check_apply_request(self) -> bool:
+        """Did the user click 'Update now' in the dashboard? (consumed on read)."""
+        result = self._request("GET", "/agent/apply-request")
+        return bool(result and result.get("requested"))
 
 
 def notification_title_body(event: dict) -> tuple[str, str]:
@@ -691,13 +699,13 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
             stop.wait(3600)  # check hourly
 
     def auto_update_loop():
-        """Downloaded/installed builds self-update from GitHub Releases: check on
-        startup, then periodically. When a newer version is applied, quit so the
-        running exe is released and the swap can relaunch the new one."""
-        from updater import AGENT_VERSION, apply_update, available_update
-        # count stays None until the first check completes, so the tray shows
-        # "Checking for updates…" first and only then "Latest version".
-        stop.wait(15)  # let the app settle before touching the network
+        """Frozen builds check GitHub Releases and REPORT availability to the
+        server so the dashboard can pop an in-app 'Update available' box. We no
+        longer prompt/apply here — the actual apply is driven by the user clicking
+        'Update now' (see update_apply_loop). Checks often enough that a new
+        release surfaces without the user restarting the app."""
+        from updater import AGENT_VERSION, available_update
+        stop.wait(15)  # settle; tray shows "Checking for updates…" until first check
         while not stop.is_set():
             try:
                 info = available_update()
@@ -708,37 +716,44 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
                     with contextlib.suppress(Exception):
                         icon.update_menu()
                     with contextlib.suppress(Exception):
-                        api.report_update_status(1, build_info(), AGENT_VERSION)
-                    # Never throw an update box over a live game (the exact thing
-                    # GameGate exists to prevent) — wait for a non-gaming moment.
+                        api.report_update_status(1, build_info(), AGENT_VERSION, tag)
+                    stop.wait(30 * 60)   # keep offering; re-check in 30 min
+                    continue
+                update_status["count"] = 0
+                update_status["available"] = None
+                with contextlib.suppress(Exception):
+                    icon.update_menu()
+                with contextlib.suppress(Exception):
+                    api.report_update_status(0, build_info(), AGENT_VERSION)
+            except Exception:
+                log.exception("Auto-update check failed")
+            stop.wait(30 * 60)  # re-check every 30 min so updates surface live
+
+    def update_apply_loop():
+        """Apply the pending update when the user clicks 'Update now' in the
+        dashboard. Polls the server for that request; on it, applies + quits so
+        the swap can relaunch (with the window — see apply_update_mode --show).
+        Never applies mid-game."""
+        from updater import apply_update
+        stop.wait(20)
+        while not stop.is_set():
+            try:
+                avail = update_status.get("available")
+                if avail:
+                    # Check gaming FIRST — during a game we don't even consume the
+                    # request, so a click mid-game applies once the game ends
+                    # rather than being dropped.
                     status = api.get_status()
-                    if status and status.get("state") == "gaming":
-                        stop.wait(1800)  # re-check in 30 min
-                        continue
-                    # Ask, don't just close-and-swap. Update now → apply + quit so
-                    # the swap can relaunch; Later → snooze a few hours.
-                    if show_update_prompt(version=tag):
-                        if apply_update(tag, url):
-                            log.info("Update accepted — restarting to apply")
+                    gaming = bool(status and status.get("state") == "gaming")
+                    if not gaming and api.check_apply_request():
+                        log.info("User requested update from dashboard — applying")
+                        if apply_update(*avail):
                             stop.set()
                             icon.stop()
                             return
-                    else:
-                        log.info("User chose Later on update %s; snoozing", tag)
-                        stop.wait(4 * 3600)
-                        continue
-                else:
-                    # Up to date: reflect it in the tray AND report to the server
-                    # so the dashboard shows the version, not a stuck "checking".
-                    update_status["count"] = 0
-                    update_status["available"] = None
-                    with contextlib.suppress(Exception):
-                        icon.update_menu()
-                    with contextlib.suppress(Exception):
-                        api.report_update_status(0, build_info(), AGENT_VERSION)
             except Exception:
-                log.exception("Auto-update check failed")
-            stop.wait(6 * 3600)  # re-check every 6 hours
+                log.exception("Update-apply poll failed")
+            stop.wait(5)  # responsive to the dashboard button
 
     def instance_signal_loop():
         """A second launch connects to the single-instance socket to ask us to
@@ -762,6 +777,7 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
         threading.Thread(target=instance_signal_loop, daemon=True).start()
     if getattr(sys, "frozen", False):
         threading.Thread(target=auto_update_loop, daemon=True).start()
+        threading.Thread(target=update_apply_loop, daemon=True).start()
     else:
         # Source checkout: the git-based updater + tray "Update" menu item.
         threading.Thread(target=update_check_loop, daemon=True).start()

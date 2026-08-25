@@ -284,7 +284,46 @@ async function refresh() {
     const agent = cache.connections && cache.connections.agent;
     const sv = document.querySelector("#side-version");
     if (sv && agent && agent.version) sv.textContent = "GameGate v" + agent.version;
+    maybeShowUpdateModal();
   } catch (e) { /* session expired — views show their own message */ }
+}
+
+// In-app update box: pops CENTERED over the app the moment the running tray
+// reports a newer version (no restart, no corner card). "Update now" tells the
+// tray to apply; it updates and reopens the window. "Later" hides it for this
+// version until the next launch.
+let updateModalOpen = false;
+let updateDismissed = null;
+function maybeShowUpdateModal() {
+  const agent = cache.connections && cache.connections.agent;
+  if (!agent || !agent.pending || !agent.available_version) return;
+  if (updateModalOpen || updateDismissed === agent.available_version) return;
+  showUpdateModal(agent.available_version);
+}
+function showUpdateModal(version) {
+  updateModalOpen = true;
+  const overlay = document.createElement("div");
+  overlay.className = "catalog-overlay";
+  overlay.innerHTML = `<div class="catalog">
+    <h2>Update available</h2>
+    <div class="muted" style="margin-bottom:14px">GameGate ${esc(version)} is ready to install. It'll update and reopen for you — takes a few seconds.</div>
+    <div id="updStatus" style="min-height:18px;margin-bottom:6px;font-size:13px"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="btn" id="updLater">Later</button>
+      <button class="btn green" id="updNow">Update now</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  const later = () => { updateDismissed = version; updateModalOpen = false; overlay.remove(); };
+  overlay.onclick = (e) => { if (e.target === overlay) later(); };
+  overlay.querySelector("#updLater").onclick = later;
+  overlay.querySelector("#updNow").onclick = async (e) => {
+    const status = overlay.querySelector("#updStatus");
+    e.target.disabled = true; e.target.textContent = "Updating…";
+    overlay.querySelector("#updLater").disabled = true;
+    status.textContent = "Downloading and installing — GameGate will reopen in a moment.";
+    status.style.color = "var(--green, #2ee06f)";
+    try { await fetch("/agent/request-update", { method: "POST" }); } catch (_) { /* the app quits shortly */ }
+  };
 }
 
 function recapCard(d) {
