@@ -91,13 +91,24 @@ def _dir_writable(directory: Path) -> bool:
 
 
 def config_path() -> Path:
-    """Where config.json lives. Next to the app when that folder is writable
-    (source checkout / loose .exe), otherwise a per-user LocalAppData folder — a
-    packaged/installed app (MSIX) runs from a READ-ONLY location, so config must
-    live somewhere writable. Seeds the per-user copy from a bundled
-    config.example.json on first use."""
+    """Where config.json lives.
+
+    - If a config.json already sits next to the app, use it. Covers the source
+      checkout and the loose-exe dev build (update.ps1 drops config.json into
+      dist/ beside GameGate.exe).
+    - A packaged/frozen app otherwise uses a per-user LocalAppData folder. We do
+      NOT probe the install dir for writability when frozen: under MSIX the
+      install dir is read-only but writes are VIRTUALIZED, so the probe returns
+      True and we'd silently read a redirected, empty config — falling back to
+      the 127.0.0.1 default and never connecting to the real server.
+    - A non-frozen source checkout with no beside-config uses its own dir if
+      writable, else the per-user folder.
+
+    Seeds the per-user copy from the bundled config.example.json on first use."""
     beside = app_dir() / "config.json"
-    if beside.exists() or _dir_writable(app_dir()):
+    if beside.exists():
+        return beside
+    if not getattr(sys, "frozen", False) and _dir_writable(app_dir()):
         return beside
     base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "GameGate"
     with contextlib.suppress(OSError):
@@ -114,6 +125,12 @@ def config_path() -> Path:
 def load_config(path: str | None = None) -> dict:
     config = dict(DEFAULT_CONFIG)
     cfg = Path(path) if path else config_path()
+    # Always log WHERE we read config from and whether it existed. When a
+    # packaged app can't reach the server, the first question is "which config
+    # file did it actually load?" — this answers it without guesswork.
+    logging.getLogger("gamegate.detector").info(
+        "Loading config from %s (exists=%s)", cfg, cfg.exists()
+    )
     if cfg.exists():
         try:
             loaded = json.loads(cfg.read_text())

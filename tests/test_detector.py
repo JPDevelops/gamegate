@@ -276,3 +276,37 @@ def test_config_path_falls_back_to_localappdata_when_install_is_readonly(tmp_pat
     p = d.config_path()
     assert p == tmp_path / "AppData" / "GameGate" / "config.json"
     assert p.parent.is_dir()  # created
+
+
+def test_config_path_ignores_write_probe_when_frozen(tmp_path, monkeypatch):
+    """The MSIX failure that shipped a 127.0.0.1 window: under MSIX the install
+    dir is read-only but writes are VIRTUALIZED, so the write-probe returns True
+    and the app read a redirected, empty config. A FROZEN app must ignore the
+    probe and use LocalAppData whenever no real config sits beside the exe.
+
+    Fails on the pre-fix code (probe==True -> returns the beside path)."""
+    import detector as d
+
+    install = tmp_path / "install"       # no config.json beside the exe
+    install.mkdir()
+    monkeypatch.setattr(d.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(d, "app_dir", lambda: install)
+    monkeypatch.setattr(d, "_dir_writable", lambda _p: True)   # virtualization lies
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData"))
+
+    p = d.config_path()
+    assert p == tmp_path / "AppData" / "GameGate" / "config.json"
+    assert p != install / "config.json"
+
+
+def test_config_path_prefers_real_config_beside_loose_exe(tmp_path, monkeypatch):
+    """The loose-exe dev build (update.ps1 drops config.json into dist/) must
+    keep reading that beside-config even though it is frozen too."""
+    import detector as d
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "config.json").write_text("{}")
+    monkeypatch.setattr(d.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(d, "app_dir", lambda: dist)
+    assert d.config_path() == dist / "config.json"
