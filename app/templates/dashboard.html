@@ -911,10 +911,16 @@ window.addEventListener("hashchange", route);
 setInterval(async () => {
   await refresh();
   // Don't rebuild the view (which wipes it via innerHTML) while the user is
-  // typing in it — that ate in-progress VIP/keyword input every 15s (M8).
-  const editing = document.activeElement &&
-    document.activeElement.closest && document.activeElement.closest("#view");
-  if (!location.hash.startsWith("#/recap/") && !editing) route();
+  // actively TYPING in a field — that ate in-progress VIP/keyword input (M8).
+  // NOTE: this used to treat ANY focused element in #view as "editing", but in
+  // WebView2 a clicked <button> keeps focus — so after you clicked anything
+  // (a filter chip, a Read button), the 15s refresh stopped re-rendering and a
+  // newly-arrived message never appeared or became clickable until you reopened
+  // the app. Scope it to real text inputs so the list keeps refreshing.
+  const ae = document.activeElement;
+  const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")
+    && ae.closest && ae.closest("#view");
+  if (!location.hash.startsWith("#/recap/") && !typing) route();
 }, 15000);
 </script>
 </body>
