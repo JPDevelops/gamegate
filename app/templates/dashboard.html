@@ -409,10 +409,13 @@ const views = {
           ${!s.can_disconnect && !s.can_connect ? `<span class="muted">No actions available</span>` : ""}
         </div>
       </div>`;
+    // Discord + Slack are not configurable connectors on the local app (Discord
+    // arrives via notification capture; Slack isn't wired) — so they're not shown
+    // here. Discord messages still flow into the Messages tab via capture.
     return `<div class="sub">Click a connector to manage it.</div>`
-      + conn("discord", "Discord", c.discord) + conn("gmail", "Gmail", c.gmail)
+      + conn("gmail", "Gmail", c.gmail)
       + (c.text ? conn("text", "Text Messages", c.text) : "")
-      + conn("slack", "Slack", c.slack) + conn("classifier", "AI classifier", c.classifier)
+      + conn("classifier", "AI classifier", c.classifier)
       + `<button class="fab" onclick="showCatalog()">${I.plus} Add a connector</button>`;
   },
   settings() {

@@ -124,7 +124,9 @@ def test_unknown_connector_is_404(client):
 def test_catalog_present_in_connections(client):
     body = client.get("/connections").json()
     ids = [c["id"] for c in body["catalog"]]
-    assert ids == ["discord", "gmail", "text", "slack", "classifier"]
+    # Discord + Slack aren't configurable connectors on the local app, so the
+    # catalog only offers the ones you actually set up.
+    assert ids == ["gmail", "text", "classifier"]
 
 
 def _post_text(client, ext="t1"):
