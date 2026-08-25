@@ -12,7 +12,7 @@
 ; Inno directives/entries are ONE LINE each. Copy lives in [Messages] + [Code].
 
 #define AppName "GameGate"
-#define AppVersion "0.5.3"
+#define AppVersion "0.5.4"
 #define AppExe "GameGate.exe"
 #define Publisher "JPDevelops"
 
@@ -45,7 +45,7 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Launch GameGate now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Parameters: "--show"; Description: "Launch GameGate now"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\{#AppName}"

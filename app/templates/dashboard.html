@@ -51,7 +51,8 @@
                  border-radius:var(--radius); padding:10px 12px; display:flex;
                  align-items:center; gap:9px; }
   .status-card .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
-  .status-card.gaming .dot { background:var(--green); box-shadow:0 0 8px var(--green); }
+  .status-card.available .dot { background:var(--green); box-shadow:0 0 8px var(--green); }
+  .status-card.gaming .dot { background:var(--amber); box-shadow:0 0 8px var(--amber); }
   .status-card.focused .dot { background:var(--red); }
   .status-card .lbl { min-width:0; }
   .status-card .lbl b { display:block; font-size:12.5px; font-weight:600;
@@ -198,7 +199,7 @@
       <span class="dot"></span>
       <div class="lbl"><b id="status-title">…</b><span id="status-sub">connecting</span></div>
     </div>
-    <div class="side-version">GameGate v%%GAMEGATE_VERSION%%</div>
+    <div class="side-version" id="side-version">GameGate v%%GAMEGATE_VERSION%%</div>
   </div>
 </aside>
 <div class="main">
@@ -278,6 +279,11 @@ async function refresh() {
     document.querySelector("#status-sub").textContent =
       state === "gaming" ? "holding your messages" : state === "focused" ? "everything is held" : "delivering normally";
     renderNav();
+    // Show the REAL running version the desktop app reports (the static template
+    // value is the package version, which lagged behind the release — #2).
+    const agent = cache.connections && cache.connections.agent;
+    const sv = document.querySelector("#side-version");
+    if (sv && agent && agent.version) sv.textContent = "GameGate v" + agent.version;
   } catch (e) { /* session expired — views show their own message */ }
 }
 
@@ -418,11 +424,12 @@ const views = {
     const dark = !document.body.classList.contains("light");
     const agent = (cache.connections && cache.connections.agent) || {};
     const pending = agent.pending;
+    const ver = agent.version ? "v" + agent.version : "";
     let appStatus, appMuted;
     if (pending == null) { appStatus = "Checking for updates…"; appMuted = true; }
     else if (pending > 0) {
       appStatus = `Update available (${pending}) — use “Update GameGate” in the tray menu`; appMuted = false;
-    } else { appStatus = "Latest version"; appMuted = true; }
+    } else { appStatus = ver ? `Latest version (${ver})` : "Latest version"; appMuted = true; }
     return `
     <div class="section-title">App</div>
     <div class="card">
