@@ -25,7 +25,7 @@ from pathlib import Path
 log = logging.getLogger("gamegate.updater")
 
 # Bumped every release; the tag on GitHub (vX.Y.Z) is compared against this.
-AGENT_VERSION = "0.5.6"
+AGENT_VERSION = "0.5.7"
 
 REPO = "JPDevelops/gamegate"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -201,4 +201,6 @@ def apply_update_mode() -> None:
         return
     log.info("Update applied; relaunching %s", target)
     with contextlib.suppress(OSError):
-        subprocess.Popen([target], creationflags=_NO_WINDOW, close_fds=True)
+        # --show so the app reopens its WINDOW after updating, instead of quietly
+        # relaunching into the tray (which read as "it just closed").
+        subprocess.Popen([target, "--show"], creationflags=_NO_WINDOW, close_fds=True)

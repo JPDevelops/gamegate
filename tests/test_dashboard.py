@@ -153,7 +153,31 @@ def test_agent_update_status_surfaces_in_connections(client):
         assert client.get("/connections").json()["agent"]["pending"] == 3
     finally:
         agent_status._state.update(
-            {"pending": None, "build": None, "version": None, "at": None})
+            {"pending": None, "build": None, "version": None,
+             "available_version": None, "at": None})
+
+
+def test_update_available_version_and_apply_request_roundtrip(client):
+    """The tray reports the version available to update TO (for the in-app box),
+    and the dashboard's 'Update now' request round-trips to the tray poll."""
+    from app.services import agent_status
+    try:
+        client.post("/agent/update-status",
+                    json={"pending": 1, "build": "abc", "version": "0.5.6",
+                          "available_version": "v0.5.7"})
+        assert client.get("/connections").json()["agent"]["available_version"] == "v0.5.7"
+
+        # No apply requested yet → tray poll is false.
+        assert client.get("/agent/apply-request").json()["requested"] is False
+        # Dashboard "Update now" → the next tray poll sees it once, then it clears.
+        client.post("/agent/request-update")
+        assert client.get("/agent/apply-request").json()["requested"] is True
+        assert client.get("/agent/apply-request").json()["requested"] is False
+    finally:
+        agent_status._state.update(
+            {"pending": None, "build": None, "version": None,
+             "available_version": None, "at": None})
+        agent_status._apply_requested["flag"] = False
 
 
 def test_digest_history_lists_recent_with_rendered_text(client):
