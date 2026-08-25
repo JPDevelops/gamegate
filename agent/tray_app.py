@@ -330,23 +330,21 @@ def open_window() -> None:
 
 def _kill_child_processes() -> None:
     """On Quit, terminate the child process tree — the dashboard window process
-    and its WebView2 — so nothing lingers in Task Manager. psutil is bundled;
-    if it's somehow unavailable, fall back to taskkill on the window processes."""
+    and its WebView2 — so nothing lingers in Task Manager. CRITICAL: never kill
+    the auto-update helper (a child launched with --apply-update), or the update
+    swap would be aborted. psutil is bundled; best-effort."""
     try:
         import psutil
         for child in psutil.Process().children(recursive=True):
+            try:
+                if "--apply-update" in " ".join(child.cmdline()):
+                    continue  # leave the updater helper alone
+            except Exception:  # noqa: BLE001 — can't read cmdline; err on not killing
+                continue
             with contextlib.suppress(Exception):
                 child.kill()
-        return
-    except Exception:  # noqa: BLE001 — best effort; try taskkill as a fallback
-        log.debug("psutil child cleanup failed; trying taskkill", exc_info=True)
-    if sys.platform == "win32":
-        with contextlib.suppress(Exception):
-            subprocess.run(
-                ["taskkill", "/F", "/IM", "GameGate.exe", "/FI", f"PID ne {os.getpid()}"],
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                capture_output=True,
-            )
+    except Exception:  # noqa: BLE001 — best effort
+        log.debug("psutil child cleanup skipped", exc_info=True)
 
 
 def _darken_titlebar(window) -> None:

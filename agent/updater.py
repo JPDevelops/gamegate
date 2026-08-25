@@ -25,7 +25,7 @@ from pathlib import Path
 log = logging.getLogger("gamegate.updater")
 
 # Bumped every release; the tag on GitHub (vX.Y.Z) is compared against this.
-AGENT_VERSION = "0.3.6"
+AGENT_VERSION = "0.3.7"
 
 REPO = "JPDevelops/gamegate"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -62,10 +62,46 @@ def latest_release() -> tuple[str, str] | None:
     return (tag, url) if tag and url else None
 
 
+# How long to wait before retrying the SAME target version after an attempt that
+# didn't take. This is the loop-breaker: if a swap fails to "stick" (the relaunch
+# is still the old version), we won't immediately try again — at most one attempt
+# per version per window, so the app can never enter a restart loop.
+_RETRY_COOLDOWN_S = 1800  # 30 minutes
+
+
+def _marker_path() -> Path:
+    base = os.environ.get("LOCALAPPDATA", str(Path.home()))
+    return Path(base) / "GameGate" / "update_attempt.json"
+
+
+def _attempted_recently(tag: str) -> bool:
+    try:
+        data = json.loads(_marker_path().read_text())
+        age = time.time() - float(data.get("at", 0))
+        return data.get("tag") == tag and age < _RETRY_COOLDOWN_S
+    except Exception:  # noqa: BLE001 — no/absent marker → treat as not attempted
+        return False
+
+
+def _record_attempt(tag: str) -> None:
+    with contextlib.suppress(Exception):
+        _marker_path().parent.mkdir(parents=True, exist_ok=True)
+        _marker_path().write_text(json.dumps({"tag": tag, "at": time.time()}))
+
+
+def _clear_marker() -> None:
+    with contextlib.suppress(Exception):
+        _marker_path().unlink(missing_ok=True)
+
+
 def check_and_update(current: str = AGENT_VERSION) -> bool:
     """Check once; if a newer release exists, download it and launch the swap.
     Returns True if an update is being applied (caller should then quit so the
-    running exe is released). Safe/no-op on any error or for a non-frozen run."""
+    running exe is released). Safe/no-op on any error or for a non-frozen run.
+
+    Loop-proof: records each attempt; if we're still on the old version after
+    recently attempting the SAME target, it backs off instead of re-applying —
+    so a swap that fails to stick can never spin the app in a restart loop."""
     if not getattr(sys, "frozen", False):
         return False  # dev/source run — the git updater handles that
     try:
@@ -75,8 +111,15 @@ def check_and_update(current: str = AGENT_VERSION) -> bool:
         tag, url = info
         if parse_version(tag) <= parse_version(current):
             log.info("GameGate is up to date (have %s, latest %s)", current, tag)
+            _clear_marker()  # we're current — a prior attempt succeeded/moot
+            return False
+        if _attempted_recently(tag):
+            log.warning(
+                "Update to %s was attempted recently but we're still on %s — backing "
+                "off for now to avoid a restart loop (will retry later).", tag, current)
             return False
         log.info("Update available %s -> %s; downloading", current, tag)
+        _record_attempt(tag)  # mark BEFORE applying, so a failed swap can't loop
         return _download_and_launch_swap(url)
     except Exception:  # noqa: BLE001 — an update failure must never crash the app
         log.exception("Update check failed")
@@ -100,6 +143,25 @@ def _download_and_launch_swap(url: str) -> bool:
     return True
 
 
+def _kill_processes_using(target: str) -> None:
+    """Kill any process running the target exe image so the file can be replaced
+    (a running .exe is locked on Windows). We run from a DIFFERENT image
+    (GameGate-new.exe in temp), so we never kill ourselves."""
+    try:
+        import psutil
+        me = os.getpid()
+        target_norm = os.path.normcase(os.path.abspath(target))
+        for proc in psutil.process_iter(["pid", "exe"]):
+            if proc.info["pid"] == me:
+                continue
+            exe = proc.info.get("exe")
+            if exe and os.path.normcase(os.path.abspath(exe)) == target_norm:
+                with contextlib.suppress(Exception):
+                    proc.kill()
+    except Exception:  # noqa: BLE001 — best effort; the copy retry loop still guards
+        log.debug("pre-copy process cleanup skipped", exc_info=True)
+
+
 def apply_update_mode() -> None:
     """Entry point when GameGate is launched with --apply-update <target>.
     Runs from the freshly-downloaded exe: wait for the old process to exit, copy
@@ -107,6 +169,7 @@ def apply_update_mode() -> None:
     argv = sys.argv
     target = argv[argv.index("--apply-update") + 1]
     time.sleep(2)  # give the old process a moment to fully exit and release the file
+    _kill_processes_using(target)  # make sure nothing from the old image locks it
     src = sys.executable
     for _ in range(60):  # up to ~30s, retry while the old exe is still locked
         try:
