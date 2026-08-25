@@ -1,7 +1,11 @@
 {
-  "api_url": "https://YOUR-HOST.sslip.io",
-  "api_token": "SAME-VALUE-AS-GAMEGATE_API_TOKEN",
+  "local_mode": true,
+  "capture_windows_notifications": false,
   "auto_detect": true,
   "game_processes": [],
-  "poll_interval_seconds": 5
+  "poll_interval_seconds": 5,
+
+  "_comment": "Local mode runs the whole GameGate server inside the app on your PC. api_url and api_token are filled in automatically on first launch - you don't need to set them. To use a remote/cloud server instead, set local_mode to false and fill in api_url + api_token.",
+  "api_url": "",
+  "api_token": ""
 }

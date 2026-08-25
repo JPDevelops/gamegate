@@ -81,7 +81,10 @@ if (Test-Path "dist\GameGate.exe") {
   if (Test-Path $backup) { Remove-Item $backup -Force }
   Rename-Item "dist\GameGate.exe" $backup
 }
-python -m PyInstaller --onefile --noconsole --name GameGate --icon gamegate.ico tray_app.py *>> $log
+# Build via the .spec so the embedded FastAPI server (../app) + dashboard
+# template + uvicorn submodules are bundled too (local mode). The spec pins the
+# onefile/noconsole/icon settings the old one-liner used.
+python -m PyInstaller GameGate.spec *>> $log
 if (-not (Test-Path "dist\GameGate.exe")) {
   if (Test-Path $backup) { Rename-Item $backup "dist\GameGate.exe" }
   Fail "build failed (previous version restored)"

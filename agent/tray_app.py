@@ -34,6 +34,7 @@ from detector import (
     ApiClient,
     Detector,
     app_dir,
+    data_dir,
     load_config,
     psutil_process_lister,
     save_config_updates,
@@ -498,6 +499,16 @@ def run_tray() -> None:
     import pystray
 
     config = load_config()
+    if config.get("local_mode", True):
+        # Self-contained: run the whole GameGate server inside this app on
+        # localhost. Fills in config['api_url']/['api_token'] and persists them
+        # so the separate --window process points at the same local server.
+        try:
+            from local_server import start_local_server
+            db_path = str(data_dir() / "gamegate.db")
+            start_local_server(config, db_path, save_config_updates)
+        except Exception:  # noqa: BLE001 — never let local startup crash the tray
+            log.exception("Local server failed to start; falling back to configured api_url")
     api = FullApiClient(config["api_url"], config["api_token"])
     detector = Detector(config, psutil_process_lister, api)
     notify = pick_notifier(config)

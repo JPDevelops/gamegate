@@ -46,6 +46,12 @@ DEFAULT_CONFIG = {
     # prompt flips it on if the user says yes.
     "capture_windows_notifications": False,
     "windows_notif_prompted": False,   # have we shown the first-run consent ask?
+    # Local mode: run the whole GameGate server inside this app on 127.0.0.1
+    # instead of talking to a remote server. No server URL or token to enter —
+    # api_url/api_token are filled in automatically at startup. On by default so
+    # a packaged install "just works" offline; set false to point at a cloud
+    # server via api_url/api_token instead.
+    "local_mode": True,
 }
 
 # Path fragments that mark a process as "installed by a game launcher".
@@ -120,6 +126,13 @@ def config_path() -> Path:
             with contextlib.suppress(OSError):
                 target.write_text(example.read_text())
     return target
+
+
+def data_dir() -> Path:
+    """The writable per-user folder GameGate keeps its data in — the same folder
+    config.json resolves to. In local mode the embedded server's SQLite database
+    (gamegate.db) lives here too."""
+    return config_path().parent
 
 
 def load_config(path: str | None = None) -> dict:

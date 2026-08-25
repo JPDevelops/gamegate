@@ -6,7 +6,11 @@ and start/stop their own work. The web API therefore NEVER shells out to `sudo`
 — an app-level compromise can't restart services or gain root (review B2).
 """
 import contextlib
-import fcntl
+
+try:
+    import fcntl  # POSIX-only; absent on Windows (embedded local-mode build)
+except ImportError:  # pragma: no cover - exercised only on Windows
+    fcntl = None
 import json
 import logging
 import os
@@ -90,7 +94,10 @@ def update_env_var(key: str, value: str) -> None:
     lock_path = ENV_PATH.with_name(ENV_PATH.name + ".lock")
     lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocks until we hold the lock
+        if fcntl is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocks until we hold the lock
+        # On Windows (no fcntl) local mode is single-process, so the flock is a
+        # no-op; the atomic temp-file swap below still prevents a torn .env.
         lines = ENV_PATH.read_text().splitlines()  # re-read INSIDE the lock
         new_line = f"{key}={_quote_env_value(value)}"
         replaced = False
@@ -112,7 +119,8 @@ def update_env_var(key: str, value: str) -> None:
                 os.unlink(tmp_name)  # don't leave a stray temp on failure
             raise
     finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        if fcntl is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
 
 
