@@ -159,14 +159,38 @@ class FullApiClient(ApiClient):
         return bool(result and result.get("requested"))
 
 
+def _who_from_event(event: dict) -> str:
+    """Who the message is FROM, for the bold line. Captured apps (text/discord/…)
+    put the app name in `sender` and the real person/number/channel in `title`;
+    connector sources (gmail) put the real sender in `sender`."""
+    sender = (event.get("sender") or "").strip()
+    title = (event.get("title") or "").strip()
+    if event.get("source") in ("text", "discord", "slack", "system"):
+        who = title or sender
+    else:
+        who = sender or title
+    return (who or "New message")[:48]
+
+
+def _what_from_event(event: dict) -> str:
+    """What the message IS, for the second line: the AI one-line summary when we
+    have it, otherwise the message text (or the email subject)."""
+    ai = (event.get("metadata") or {}).get("ai") or {}
+    summary = (ai.get("summary") or "").strip()
+    if summary:
+        return summary
+    fallback = (event.get("content") or "").strip() or (event.get("title") or "").strip()
+    return fallback or "Tap to view."
+
+
 def notification_title_body(event: dict) -> tuple[str, str]:
-    # Only actually-urgent events get the scary word (live find: an Amazon
-    # shipping email was labeled 'Urgent' — the card must not cry wolf).
-    label = "Urgent" if event.get("priority") == "urgent" else "New"
-    return (
-        f"{label} — {event.get('source', '?').upper()}",
-        f"{event.get('sender', '?')}: {event.get('title', '')}",
-    )
+    """Bold line = who it's from; second line = what it is (AI summary). Truly
+    urgent items keep an 'Urgent ·' marker on the who line so it still stands out
+    without burying the sender (only actually-urgent — the card must not cry wolf)."""
+    who = _who_from_event(event)
+    if event.get("priority") == "urgent":
+        who = f"Urgent · {who}"
+    return who, _what_from_event(event)
 
 
 def digest_title_body(digest: dict) -> tuple[str, str]:
