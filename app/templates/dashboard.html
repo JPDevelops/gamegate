@@ -135,7 +135,7 @@
   .msg-meta { font-size:11.5px; color:var(--muted); margin-top:7px;
               display:flex; align-items:center; gap:6px; min-width:0; }
   .msg-meta svg { width:13px; height:13px; opacity:.7; }
-  .msg-acts { flex:none; display:flex; gap:2px; }
+  .msg-acts { flex:none; display:flex; align-items:flex-start; gap:8px; }
   .iact { background:none; border:1px solid transparent; color:var(--muted); border-radius:8px;
           width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;
           cursor:pointer; transition:background .12s, border-color .12s, color .12s; }
@@ -143,6 +143,21 @@
   .iact:hover { background:var(--bg-hover); border-color:var(--line); color:var(--text); }
   .iact.on-urg { color:var(--red); }
   .iact.on-done { color:var(--green); }
+  .iact.on-mute { color:var(--amber); }
+  /* Priority as a compact two-way switch: quiet at rest, the active choice lit
+     (Urgent in red). Reads as ONE control, not two loose buttons. */
+  .pri-seg { display:inline-flex; height:32px; border:1px solid var(--line); border-radius:8px;
+             overflow:hidden; flex:none; }
+  .pri-seg button { background:none; border:none; color:var(--muted); font-size:11px; font-weight:500;
+                    padding:0 10px; cursor:pointer; white-space:nowrap;
+                    transition:background .12s, color .12s; }
+  .pri-seg button + button { border-left:1px solid var(--line); }
+  .pri-seg button:hover { background:var(--bg-hover); color:var(--text); }
+  .pri-seg button.act { background:var(--bg-hover); color:var(--text); font-weight:600; }
+  .pri-seg button.act.urg { color:var(--red); }
+  /* A silenced card: slightly receded, with a small tag in the meta line. */
+  .msg.silenced { opacity:.72; }
+  .tag-mute { color:var(--amber); font-weight:500; }
 
   /* recaps */
   .recap-card { display:flex; align-items:center; gap:14px; padding:12px 14px; }
@@ -252,6 +267,7 @@ const I = {
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
   bellfill: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke-width="1.6"/></svg>',
+  belloff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M18 8a6 6 0 0 0-9.3-5"/><path d="M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h13"/><path d="m2 2 20 20"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
   checkdone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.4 2.4 4.6-5"/></svg>',
 };
@@ -290,6 +306,18 @@ function cleanName(s){
 function whoOf(e){
   const sender = cleanName(e.sender), title = cleanName(e.title);
   return ["text","discord","slack"].includes(e.source) ? (title || sender) : (sender || title);
+}
+// Mirror of the server's message_identity(): the key a message's urgent /
+// not-urgent / SILENCE rules are stored under, so a card can reflect whether its
+// app is already silenced. Uses RAW title/sender (not the cleaned display name).
+function identityOf(e){
+  const raw = s => String(s ?? "").trim().toLowerCase();
+  if (["text","discord","slack","system"].includes(e.source)) return raw(e.title) || raw(e.sender);
+  const m = String(e.sender ?? "").match(/<([^>]+)>/);
+  return raw(m ? m[1] : e.sender) || raw(e.title);
+}
+function isSilenced(e){
+  return ((cache.userSettings && cache.userSettings.muted_sources) || []).includes(identityOf(e));
 }
 
 let cache = { recaps: [], events: [], connections: null, status: null, userSettings: null };
@@ -468,17 +496,26 @@ const views = {
       const ai = e.metadata && e.metadata.ai;
       const what = (ai && ai.summary) || e.content || e.title || "";
       const urg = ai && ai.urgency ? ` · urgency ${esc(String(ai.urgency))}/10` : "";
-      const isUrg = e.priority === "urgent", isRead = !!e.read_at;
+      const isRead = !!e.read_at, sil = isSilenced(e), idt = identityOf(e), app = whoOf(e) || e.source;
+      const s = cache.userSettings || {};
+      const urgActive = e.priority === "urgent" || (s.vip_senders || []).includes(idt);
+      const notActive = (s.never_urgent_senders || []).includes(idt);
       return `
-      <div class="msg ${esc(e.priority)}">
+      <div class="msg ${esc(e.priority)}${sil ? " silenced" : ""}">
         <div class="msg-body">
           <div class="msg-who">${esc(whoOf(e))}</div>
           ${what ? `<div class="msg-what">${esc(what)}</div>` : ""}
-          <div class="msg-meta">${SRCICON[e.source]||""}<span>${esc(e.source)}</span> · ${ago(e.received_at)}${urg}</div>
+          <div class="msg-meta">${SRCICON[e.source]||""}<span>${esc(e.source)}</span> · ${ago(e.received_at)}${urg}${sil ? ` · <span class="tag-mute">silenced</span>` : ""}</div>
         </div>
         <div class="msg-acts">
-          <button class="iact ${isUrg?"on-urg":""}" title="${isUrg?"Not urgent (hold this sender)":"Mark urgent (always break through)"}"
-            onclick="markUrgent('${e.id}', ${!isUrg})">${I.bell}</button>
+          <div class="pri-seg" role="group" aria-label="Priority">
+            <button class="${notActive?"act":""}" title="Hold this sender — never break through"
+              onclick="markUrgent('${e.id}', false)">Not urgent</button>
+            <button class="${urgActive?"act urg":""}" title="Always let this sender break through"
+              onclick="markUrgent('${e.id}', true)">Urgent</button>
+          </div>
+          <button class="iact ${sil?"on-mute":""}" title="${sil?`Unsilence ${esc(app)}`:`Silence ${esc(app)} — stop it popping up`}"
+            onclick="silenceApp('${e.id}', ${!sil})">${sil?I.belloff:I.bell}</button>
           <button class="iact ${isRead?"on-done":""}" title="${isRead?"Mark unread":"Mark read"}"
             onclick="markRead('${e.id}', ${!isRead})">${isRead?I.checkdone:I.check}</button>
         </div>
@@ -631,6 +668,13 @@ async function markRead(id, read) {
 async function markUrgent(id, urgent) {
   await fetch(`/events/${id}/mark`, { method: "POST",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urgent }) });
+  await refresh(); route();
+}
+async function silenceApp(id, silenced) {
+  // Bell = "silence this app": it stays captured (inbox + recap) but never pops
+  // an overlay again. Reversible — click again to unsilence.
+  await fetch(`/events/${id}/silence`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ silenced }) });
   await refresh(); route();
 }
 async function readAll() {

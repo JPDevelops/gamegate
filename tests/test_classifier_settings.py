@@ -154,3 +154,44 @@ def test_message_identity_picks_the_right_who():
     from app.services.ingest_service import message_identity
     assert message_identity("text", "Text", "Blink") == "blink"
     assert message_identity("gmail", "Boss <boss@work.com>", "subject") == "boss@work.com"
+
+
+def test_silence_holds_the_app_but_still_captures(client):
+    """The per-message 'Silence' bell (v0.5.17): the app's messages are still
+    CAPTURED (kept for the inbox/recap) but never break through with an overlay —
+    a hard stop independent of priority, unlike 'not urgent' which only downgrades.
+    Reversible."""
+    from datetime import UTC, datetime
+    client.post("/status", json={"state": "available"})
+    now = datetime.now(UTC).isoformat()
+    ev = client.post("/events", json={
+        "source": "text", "external_id": "sil1", "sender": "Text", "title": "Blink",
+        "content": "Motion detected", "received_at": now, "priority": "informational",
+    }).json()
+    r = client.post(f"/events/{ev['id']}/silence", json={"silenced": True})
+    assert r.status_code == 200 and r.json()["app"] == "blink"
+    assert "blink" in client.get("/settings").json()["muted_sources"]
+
+    # A NEW *urgent* Blink is still captured but HELD — never pops — even though
+    # urgent + available would normally break through. Priority is left intact
+    # (silence isn't a downgrade; it just refuses to interrupt).
+    ev2 = client.post("/events", json={
+        "source": "text", "external_id": "sil2", "sender": "Text", "title": "Blink",
+        "content": "Motion detected", "received_at": now, "priority": "urgent",
+    }).json()
+    assert ev2["priority"] == "urgent"
+    pending = client.get("/notifications/pending").json()
+    assert not any(n["event"]["external_id"] == "sil2" for n in pending)  # never popped
+
+    # Control: an un-silenced urgent from a different app DOES break through.
+    client.post("/events", json={
+        "source": "text", "external_id": "sil3", "sender": "Text", "title": "Mom",
+        "content": "call me", "received_at": now, "priority": "urgent",
+    })
+    pending = client.get("/notifications/pending").json()
+    assert any(n["event"]["external_id"] == "sil3" for n in pending)
+
+    # Unsilence removes the rule.
+    r2 = client.post(f"/events/{ev['id']}/silence", json={"silenced": False})
+    assert r2.status_code == 200
+    assert "blink" not in client.get("/settings").json()["muted_sources"]
