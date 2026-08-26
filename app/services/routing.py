@@ -20,11 +20,19 @@ def decide(
     state: AvailabilityState,
     priority: EventPriority,
     urgent_breaks_through_gaming: bool = True,
+    notify_when_available: bool = True,
+    ping_non_urgent: bool = True,
 ) -> Decision:
     if priority == EventPriority.IGNORE:
         return Decision.SUPPRESS
 
     if state == AvailabilityState.AVAILABLE:
+        # Master switch: no on-screen pop-ups at all while you're free.
+        if not notify_when_available:
+            return Decision.QUEUE
+        # Otherwise only urgent pops, unless the user opted non-urgent in too.
+        if priority != EventPriority.URGENT and not ping_non_urgent:
+            return Decision.QUEUE
         return Decision.DELIVER_NOW
 
     if state == AvailabilityState.FOCUSED:

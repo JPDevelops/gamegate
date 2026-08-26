@@ -11,6 +11,12 @@ from app.db import Database
 
 DEFS = {
     "urgent_breakthrough": {"kind": "bool", "default": True},
+    # When you're NOT gaming: master switch for on-screen pop-ups. Off = nothing
+    # pops while you're free (it all waits in the inbox/recap).
+    "notify_when_available": {"kind": "bool", "default": True},
+    # Whether non-urgent messages pop too (only when notify_when_available is on
+    # and you're not gaming). Off = only urgent breaks through — the quiet default.
+    "ping_non_urgent": {"kind": "bool", "default": False},
     "notification_sound": {"kind": "bool", "default": True},
     "overlay_duration_s": {"kind": "int", "default": 8, "min": 4, "max": 20},
     "freshness_minutes": {"kind": "int", "default": 10, "min": 1, "max": 120},

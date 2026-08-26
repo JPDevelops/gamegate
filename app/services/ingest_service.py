@@ -82,7 +82,10 @@ class IngestService:
             incoming.requires_action = False
 
         state = self.status.get().state
-        decision = decide(state, incoming.priority, prefs["urgent_breakthrough"])
+        decision = decide(
+            state, incoming.priority, prefs["urgent_breakthrough"],
+            prefs.get("notify_when_available", True), prefs.get("ping_non_urgent", False),
+        )
         if decision == Decision.DELIVER_NOW and is_stale(
             incoming, prefs["freshness_minutes"]
         ):
