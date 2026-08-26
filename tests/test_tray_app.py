@@ -67,7 +67,7 @@ def test_pump_shows_then_acks():
     pump = ToastPump(api, lambda title, body, **kw: shown.append((title, body)) or True)
     assert pump.run_once() == 2
     assert api.acked == ["n1", "d1"]
-    assert shown[0][0].endswith("— GMAIL")
+    assert shown[0][0] == "boss"   # bold line = who it's from
     assert pump.run_once() == 0  # drained — nothing re-shown
 
 
@@ -143,15 +143,24 @@ def test_dnd_stays_off_if_api_down():
 
 
 def test_formatting():
-    title, body = notification_title_body(
-        {"source": "slack", "sender": "coworker", "title": "prod down", "priority": "urgent"}
-    )
-    assert title == "Urgent — SLACK"
-    assert "coworker" in body
-    title, _ = notification_title_body(
-        {"source": "gmail", "sender": "amazon", "title": "shipped", "priority": "informational"}
-    )
-    assert title == "New — GMAIL"  # non-urgent cards must not cry wolf
+    # Bold line = WHO it's from; second line = the AI summary (what it is).
+    # A captured text: who = the number/contact (title), what = the AI summary.
+    title, body = notification_title_body({
+        "source": "text", "sender": "Text", "title": "+19513964427",
+        "content": "running late", "priority": "informational",
+        "metadata": {"ai": {"summary": "A friend says they're running late."}},
+    })
+    assert title == "+19513964427"                           # who, not "New — TEXT"
+    assert body == "A friend says they're running late."     # AI summary, not "Text: …"
+
+    # Gmail: who = the sender; urgent keeps a marker without burying the sender.
+    title, body = notification_title_body({
+        "source": "gmail", "sender": "Boss <boss@work.com>", "title": "Deploy now",
+        "content": "the site is down", "priority": "urgent",
+    })
+    assert title == "Urgent · Boss <boss@work.com>"
+    assert body == "the site is down"                        # no AI summary → the text
+
     title, body = digest_title_body({"text": "Line1\nLine2\nLine3"})
     assert title == "Line1"
     assert "Line2" in body
