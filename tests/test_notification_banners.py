@@ -34,3 +34,14 @@ def test_endpoint_persists_and_reports(client):
     # Toggling back off persists too.
     assert client.post("/settings/notifications-suppress", json={"enabled": False}).json()["enabled"] is False
     assert client.get("/settings").json()["suppress_source_banners"] is False
+
+
+def test_should_mute_covers_everything_except_gamegate():
+    # Zero pop-ups: every app is muted...
+    assert nb.should_mute("com.squirrel.Discord.Discord")
+    assert nb.should_mute("Microsoft.YourPhone_8wekyb3d8bbwe!YourPhoneNotifications_com.immediasemi.android.blink")
+    assert nb.should_mute("Microsoft.WindowsStore_8wekyb3d8bbwe!App")
+    # ...except GameGate's own (never mute ourselves).
+    assert not nb.should_mute("GameGate")
+    assert not nb.should_mute("com.jpdevelops.gamegate")
+    assert not nb.should_mute("")
