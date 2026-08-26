@@ -542,6 +542,10 @@ const views = {
     <div class="card">
       ${sw("urgent_breakthrough", "Urgent break-through while gaming",
            "Truly urgent messages pop the overlay mid-game. Off = everything waits for the recap.")}
+      ${sw("notify_when_available", "Pop-ups when you're not gaming",
+           "When you're free, let notifications appear on screen. Off = everything waits quietly in your inbox and recap.")}
+      ${sw("ping_non_urgent", "Pop up for everyday messages too",
+           "Also pop up for non-urgent messages, not just urgent ones. Off = only urgent breaks through; the rest waits in your inbox.")}
       ${sw("notification_sound", "Notification sound", "Play a sound when the overlay appears.")}
       <div class="setrow"><div class="lbl"><div>Mute Windows notification banners</div>
         <div class="muted">Turn off Windows' own pop-up notification banners for every app, so GameGate is your only notification surface — everything's still captured. <b>Restart Windows once</b> after turning this on for it to take effect; a brand-new app that pops up later is caught on the next restart.</div></div>

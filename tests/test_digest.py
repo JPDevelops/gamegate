@@ -119,9 +119,10 @@ def test_stale_events_never_interrupt(client):
 
     old = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
     fresh = datetime.now(UTC).isoformat()
-    # state = available → normally everything is deliver-now
-    client.post("/events", json=make_event(external_id="old-1", received_at=old))
-    client.post("/events", json=make_event(external_id="new-1", received_at=fresh))
+    # Urgent so it WOULD deliver-now when available (non-urgent is held by default
+    # now) — this isolates the freshness gate: only the fresh one gets through.
+    client.post("/events", json=make_event(external_id="old-1", received_at=old, priority="urgent"))
+    client.post("/events", json=make_event(external_id="new-1", received_at=fresh, priority="urgent"))
 
     pending = client.get("/notifications/pending").json()
     assert [n["event"]["external_id"] for n in pending] == ["new-1"]
