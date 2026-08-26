@@ -28,6 +28,16 @@ def is_stale(incoming: EventIn, freshness_minutes: int = 10) -> bool:
     return datetime.now(UTC) - received > timedelta(minutes=freshness_minutes)
 
 
+def message_identity(source: str, sender: str, title: str) -> str:
+    """The 'who' a message is from, used to key the user's urgent / not-urgent
+    marks. Captured apps (text/discord/slack/system) put the app label in
+    `sender` and the real sender/number/channel in `title`; connector sources
+    (gmail) put the real sender in `sender`. Normalized to match stored rules."""
+    if source in ("text", "discord", "slack", "system"):
+        return (title or sender or "").strip().lower()
+    return normalize_sender(sender) or (title or "").strip().lower()
+
+
 class IngestService:
     def __init__(self, db: Database, settings: Settings) -> None:
         self.events = EventRepository(db)
@@ -42,22 +52,34 @@ class IngestService:
         incoming = incoming.model_copy()
         prefs = self.user_settings.get_all()
 
+        # The 'who' the user's marks key on, and whether they marked this sender
+        # "not urgent" (that mark overrides VIP/keyword/AI — the user always wins).
+        who = message_identity(incoming.source.value, incoming.sender, incoming.title)
+        never_urgent = bool(who) and who in prefs.get("never_urgent_senders", [])
+
         # VIP senders and urgent keywords upgrade priority (never downgrade) —
-        # server-side so the rule applies uniformly to every source.
-        if incoming.priority != EventPriority.URGENT:
+        # server-side so the rule applies uniformly to every source. Skipped for a
+        # not-urgent sender.
+        if incoming.priority != EventPriority.URGENT and not never_urgent:
             sender = normalize_sender(incoming.sender)
             text = f"{incoming.title} {incoming.content}".lower()
-            if sender and sender in prefs["vip_senders"]:
+            # VIP matches the 'who' OR the raw email (back-compat email VIP lists).
+            if (who and who in prefs["vip_senders"]) or (sender and sender in prefs["vip_senders"]):
                 incoming.priority = EventPriority.URGENT
                 incoming.requires_action = True
             elif any(keyword in text for keyword in prefs["urgent_keywords"] if keyword):
                 incoming.priority = EventPriority.URGENT
 
-        # Opt-in AI classifier: score the event and let it refine priority + add a
-        # one-line summary. Never downgrades below URGENT; never raises (safe
-        # fallback), so a wrong key or offline is invisible.
+        # Opt-in AI classifier: attach a one-line summary always; it only ESCALATES
+        # priority when the user hasn't marked this sender not-urgent. Never raises.
         if incoming.priority != EventPriority.URGENT and prefs.get("classifier_enabled"):
-            self._ai_classify(incoming)
+            self._ai_classify(incoming, escalate=not never_urgent)
+
+        # Belt-and-suspenders: the source (or anything) may have set it urgent, but
+        # a "not urgent" mark for this sender wins — hold it, don't break through.
+        if never_urgent and incoming.priority == EventPriority.URGENT:
+            incoming.priority = EventPriority.INFORMATIONAL
+            incoming.requires_action = False
 
         state = self.status.get().state
         decision = decide(state, incoming.priority, prefs["urgent_breakthrough"])
@@ -74,21 +96,24 @@ class IngestService:
             self.events.mark_consumed(event.id)
         return event, created, decision
 
-    def _ai_classify(self, incoming: EventIn) -> None:
-        """Run the LLM classifier and fold its verdict into the event: refine
-        priority (never below its current level) and attach a one-line summary
-        for the recap. Best-effort — SafeClassifier never raises."""
+    def _ai_classify(self, incoming: EventIn, escalate: bool = True) -> None:
+        """Run the LLM classifier and fold its verdict into the event: attach a
+        one-line summary for the recap, and (when `escalate`) refine priority
+        (never below its current level). `escalate=False` for a sender the user
+        marked not-urgent — we still want the summary, just not the escalation.
+        Best-effort — SafeClassifier never raises."""
         from app.services.classifier import build_classifier
 
         classifier = build_classifier()
         if classifier.primary is None:
             return  # enabled flag on but no usable key — nothing to do
         result = classifier.classify(incoming)
-        if result.category == "action_required" or result.urgency >= 8:
-            incoming.priority = EventPriority.URGENT
-            incoming.requires_action = True
-        elif result.urgency >= 5 and incoming.priority == EventPriority.INFORMATIONAL:
-            incoming.priority = EventPriority.ACTIONABLE
+        if escalate:
+            if result.category == "action_required" or result.urgency >= 8:
+                incoming.priority = EventPriority.URGENT
+                incoming.requires_action = True
+            elif result.urgency >= 5 and incoming.priority == EventPriority.INFORMATIONAL:
+                incoming.priority = EventPriority.ACTIONABLE
         meta = dict(incoming.metadata or {})
         meta["ai"] = {
             "summary": result.summary,

@@ -128,6 +128,17 @@ class EventRepository:
             )
         return cur.rowcount > 0
 
+    def set_priority(self, event_id: str, priority: str, requires_action: bool) -> bool:
+        """Re-prioritize one event (the per-message urgent / not-urgent marks).
+        Returns False for unknown ids."""
+        conn = self.db.connection()
+        with conn:
+            cur = conn.execute(
+                "UPDATE events SET priority = ?, requires_action = ? WHERE id = ?",
+                (priority, 1 if requires_action else 0, event_id),
+            )
+        return cur.rowcount > 0
+
     def mark_all_read(self) -> list[str]:
         conn = self.db.connection()
         with conn:  # SELECT + UPDATE in one transaction so a concurrent insert
