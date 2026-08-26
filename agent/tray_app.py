@@ -600,13 +600,18 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
                 log.exception("Detector poll failed")
             stop.wait(config["poll_interval_seconds"])
 
-    def pump_loop(icon: "pystray.Icon"):
+    def pump_loop():
+        # CRITICAL (v0.5.14): never mutate the tray icon/menu (icon.icon,
+        # icon.update_menu) from a background thread. On the win32 backend those
+        # drive Shell_NotifyIcon against a HICON owned by the MAIN-thread message
+        # loop; doing it from another thread corrupts win32 state and NATIVELY
+        # crashes the tray process — no Python traceback, and it orphans the
+        # dashboard window (the "nothing in the system tray but the app is open"
+        # bug). Live availability shows in the dashboard + the tray "Status" item,
+        # so the tray icon stays a single static image.
         while not stop.is_set():
             try:
                 pump.run_once()
-                status = api.get_status()
-                if status:
-                    icon.icon = icons.get(status.get("state"), icons["available"])
             except Exception:
                 log.exception("Pump cycle failed")
             stop.wait(POLL_SECONDS)
@@ -698,9 +703,10 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
         while not stop.is_set():
             try:
                 count = checker.pending_changes()
-                update_status["count"] = count       # drive the tray menu label/enabled
-                with contextlib.suppress(Exception):
-                    icon.update_menu()               # re-render 'Latest version' vs 'Update (N)'
+                # Drives the tray menu label/enabled — read lazily by the
+                # update_item_text callable when the menu is OPENED, so we must NOT
+                # call icon.update_menu() here (cross-thread win32 crash, v0.5.14).
+                update_status["count"] = count
                 with contextlib.suppress(Exception):
                     api.report_update_status(count, build_info(), AGENT_VERSION)  # dashboard too
                 if count > 0:
@@ -735,18 +741,18 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
                 info = available_update()
                 if info:
                     tag, url = info
+                    # NB: update_status drives the tray menu label lazily (the
+                    # update_item_text callable reads it when the menu opens); do
+                    # NOT icon.update_menu() from this thread — cross-thread win32
+                    # mutation natively crashes the tray (v0.5.14).
                     update_status["count"] = 1
                     update_status["available"] = (tag, url)
-                    with contextlib.suppress(Exception):
-                        icon.update_menu()
                     with contextlib.suppress(Exception):
                         api.report_update_status(1, build_info(), AGENT_VERSION, tag)
                     stop.wait(30 * 60)   # keep offering; re-check in 30 min
                     continue
                 update_status["count"] = 0
                 update_status["available"] = None
-                with contextlib.suppress(Exception):
-                    icon.update_menu()
                 with contextlib.suppress(Exception):
                     api.report_update_status(0, build_info(), AGENT_VERSION)
             except Exception:
@@ -796,7 +802,7 @@ def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = F
                 open_window()
 
     threading.Thread(target=detector_loop, daemon=True).start()
-    threading.Thread(target=pump_loop, args=(icon,), daemon=True).start()
+    threading.Thread(target=pump_loop, daemon=True).start()
     if lock is not None:
         threading.Thread(target=instance_signal_loop, daemon=True).start()
     if getattr(sys, "frozen", False):

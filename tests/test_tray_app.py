@@ -270,3 +270,21 @@ def test_child_env_scrubs_pyinstaller_vars(monkeypatch):
     assert "_PYI_ARCHIVE_FILE" not in env
     assert "_MEIPASS2" not in env
     assert env["GAMEGATE_API_TOKEN"] == "keep-me"
+
+
+def test_no_cross_thread_tray_icon_mutation():
+    """Regression guard (v0.5.14, native tray crash): the tray icon/menu must
+    NEVER be mutated from a background thread. On the win32 pystray backend,
+    `icon.icon = ...` / `icon.update_menu()` drive Shell_NotifyIcon against a
+    HICON owned by the main-thread message loop; calling them from the pump/
+    update threads corrupted win32 state and hard-crashed the tray with NO Python
+    traceback (orphaning the dashboard window). The tray menu label is a callable
+    re-evaluated on open, so these calls are unnecessary. Assert no LIVE (non-
+    comment) occurrence survives anywhere in the module."""
+    source = (Path(__file__).resolve().parents[1] / "agent" / "tray_app.py").read_text()
+    offenders = []
+    for lineno, raw in enumerate(source.splitlines(), 1):
+        code = raw.split("#", 1)[0]  # drop inline comments
+        if "icon.update_menu(" in code or "icon.icon" in code:
+            offenders.append(f"{lineno}: {raw.strip()}")
+    assert not offenders, "cross-thread tray icon mutation reintroduced:\n" + "\n".join(offenders)
