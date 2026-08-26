@@ -25,6 +25,12 @@ DEFS = {
     # break through), overriding VIP/keyword/AI. Built by the per-message
     # "Not urgent" button so GameGate learns each user's preferences locally.
     "never_urgent_senders": {"kind": "list", "default": []},
+    # Apps/senders the user hit "Silence" on (per-message bell). Their messages
+    # are still CAPTURED (kept in the inbox + recap) but never break through with
+    # an on-screen overlay — the hard "stop interrupting me with this" that a
+    # chatty source (e.g. a Blink camera) needs. Distinct from never_urgent, which
+    # only downgrades priority (and can still pop when ping_non_urgent is on).
+    "muted_sources": {"kind": "list", "default": []},
     "urgent_keywords": {"kind": "list", "default": ["urgent", "asap", "emergency"]},
     # AI classifier: whether to score incoming notifications with an LLM. The
     # key itself is a SECRET, stored separately and NEVER returned to clients
@@ -197,7 +203,7 @@ class SettingsService:
             if any(len(x) > 200 for x in value):
                 raise ValueError(f"{key} entries are limited to 200 characters")
             cleaned = [x.strip() for x in value if x.strip()]
-            if key in ("vip_senders", "never_urgent_senders"):
+            if key in ("vip_senders", "never_urgent_senders", "muted_sources"):
                 cleaned = [normalize_sender(x) for x in cleaned]
             else:
                 cleaned = [x.lower() for x in cleaned]

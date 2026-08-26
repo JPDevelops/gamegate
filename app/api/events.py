@@ -67,6 +67,27 @@ def mark_urgent(
     return {"id": event_id, "urgent": body.urgent, "learned": who}
 
 
+class Silence(BaseModel):
+    silenced: bool
+
+
+@router.post("/events/{event_id}/silence")
+def silence_source(
+    event_id: str, body: Silence, repo: EventRepoDep, settings: SettingsDep
+) -> dict:
+    """Per-message 'Silence' (bell): stop THIS message's app/source from ever
+    popping an on-screen overlay again. It's still captured (kept in the inbox +
+    recap) — just never interrupts. Toggles the source in `muted_sources`;
+    silenced=False un-silences. Returns the app label so the UI can say
+    'Silenced Blink'."""
+    event = repo.find_by_id(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Unknown event")
+    who = message_identity(event.source.value, event.sender, event.title)
+    settings.toggle_sender("muted_sources", who, present=body.silenced)
+    return {"id": event_id, "silenced": body.silenced, "app": who}
+
+
 @router.post("/events/read-all")
 def read_all(repo: EventRepoDep) -> dict:
     return {"marked": repo.mark_all_read()}

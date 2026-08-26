@@ -56,6 +56,10 @@ class IngestService:
         # "not urgent" (that mark overrides VIP/keyword/AI — the user always wins).
         who = message_identity(incoming.source.value, incoming.sender, incoming.title)
         never_urgent = bool(who) and who in prefs.get("never_urgent_senders", [])
+        # "Silenced" apps/senders are still captured (recap + inbox) but must NEVER
+        # pop an overlay — a hard stop for a chatty source, independent of priority
+        # or the ping_non_urgent switch (per-message "Silence" button).
+        muted = bool(who) and who in prefs.get("muted_sources", [])
 
         # VIP senders and urgent keywords upgrade priority (never downgrade) —
         # server-side so the rule applies uniformly to every source. Skipped for a
@@ -89,6 +93,11 @@ class IngestService:
         if decision == Decision.DELIVER_NOW and is_stale(
             incoming, prefs["freshness_minutes"]
         ):
+            decision = Decision.QUEUE
+        # A silenced source never interrupts — hold it for the inbox/recap even if
+        # routing (or an urgent mark) would otherwise pop it. Applied LAST so it
+        # wins over everything.
+        if muted and decision == Decision.DELIVER_NOW:
             decision = Decision.QUEUE
         event, created = self.events.add(incoming, decision.value)
         if created and decision == Decision.DELIVER_NOW:
