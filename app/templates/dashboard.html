@@ -483,8 +483,8 @@ const views = {
       ${sw("urgent_breakthrough", "Urgent break-through while gaming",
            "Truly urgent messages pop the overlay mid-game. Off = everything waits for the recap.")}
       ${sw("notification_sound", "Notification sound", "Play a sound when the overlay appears.")}
-      <div class="setrow"><div class="lbl"><div>Silence all pop-ups</div>
-        <div class="muted">Mute Windows' native banners for every app so nothing pops — GameGate becomes your only notification surface (everything's still captured). <b>Restart Windows once</b> after turning this on for it to take effect; a brand-new app that pops later is caught on the next restart.</div></div>
+      <div class="setrow"><div class="lbl"><div>Mute Windows notification banners</div>
+        <div class="muted">Turn off Windows' own pop-up notification banners for every app, so GameGate is your only notification surface — everything's still captured. <b>Restart Windows once</b> after turning this on for it to take effect; a brand-new app that pops up later is caught on the next restart.</div></div>
         <div class="switch ${s.suppress_source_banners ? "on" : ""}" onclick="setBannerSuppress(${!s.suppress_source_banners})"></div></div>
       <div class="setrow"><div class="lbl"><div>Overlay duration</div>
         <div class="muted">Seconds the card stays on screen (4–20).</div></div>
