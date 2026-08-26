@@ -38,6 +38,17 @@ def is_messaging_app(aumid: str) -> bool:
     return any(marker in low for marker in MESSAGING_MARKERS)
 
 
+# When silencing, we mute EVERY app's banner (so nothing pops — the user asked
+# for zero pop-ups, incl. phone-mirrored apps like Blink that come via Phone
+# Link) except GameGate's own, so its overlay/toasts are never muted by itself.
+_NEVER_MUTE = ("gamegate",)
+
+
+def should_mute(aumid: str) -> bool:
+    low = (aumid or "").lower()
+    return bool(low) and not any(marker in low for marker in _NEVER_MUTE)
+
+
 def _iter_registered_apps():
     """AUMIDs that have a notification-settings entry (i.e. have notified before)."""
     import winreg
@@ -60,13 +71,17 @@ def _set_banner(aumid: str, show: bool) -> None:
 
 
 def apply(enabled: bool) -> list[str]:
-    """Mute (enabled=True) or restore (False) the pop-up banner for every
-    registered messaging app GameGate recognizes. Returns the AUMIDs touched.
-    No-op returning [] off Windows or if the registry can't be read/written."""
+    """Mute (enabled=True) or restore (False) the pop-up banner for EVERY
+    registered app (except GameGate) — so the user gets zero native pop-ups and
+    GameGate is the single surface. Returns the AUMIDs touched. No-op returning
+    [] off Windows or if the registry can't be read/written. NOTE: Windows only
+    reloads notification settings at sign-in, so a change takes effect after the
+    next restart (and a brand-new app that first pops mid-session is caught on
+    the following restart)."""
     if sys.platform != "win32":
         return []
     try:
-        apps = [a for a in _iter_registered_apps() if is_messaging_app(a)]
+        apps = [a for a in _iter_registered_apps() if should_mute(a)]
     except OSError as exc:  # key missing / access — nothing to do
         log.warning("Couldn't enumerate notification apps: %s", exc)
         return []
