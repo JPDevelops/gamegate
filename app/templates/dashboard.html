@@ -414,14 +414,20 @@ const views = {
       const aiLine = ai && ai.summary
         ? `<div class="muted" style="margin-top:3px;color:var(--green,#2ee06f)">🤖 ${esc(ai.summary)}${ai.urgency ? " · urgency " + esc(String(ai.urgency)) + "/10" : ""}</div>`
         : "";
+      const mark = e.priority === "urgent"
+        ? `<button class="readbtn" title="Teach GameGate this sender isn't urgent" onclick="markUrgent('${e.id}', false)">Not urgent</button>`
+        : `<button class="readbtn" title="Teach GameGate this sender is urgent" onclick="markUrgent('${e.id}', true)">Mark urgent</button>`;
       return `
       <div class="card row">
         <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
         <div style="min-width:0"><div class="msg-title">${esc(e.sender)} — ${esc(e.title)}</div>
         <div class="muted">${SRCICON[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div>${aiLine}</div>
-        ${e.read_at
-          ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
-          : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
+        <div class="row" style="gap:6px;flex:none">
+          ${mark}
+          ${e.read_at
+            ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
+            : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
+        </div>
       </div>`;
     };
     if (msgView === "read") return bar + shown.map(card).join("");
@@ -560,6 +566,13 @@ async function clearData() {
 }
 async function markRead(id, read) {
   await fetch(`/events/${id}/${read ? "read" : "unread"}`, { method: "POST" });
+  await refresh(); route();
+}
+// Mark a message urgent / not-urgent. Re-prioritizes it AND teaches GameGate the
+// sender's preference (server-side, stored locally), so future messages follow.
+async function markUrgent(id, urgent) {
+  await fetch(`/events/${id}/mark`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urgent }) });
   await refresh(); route();
 }
 async function readAll() {

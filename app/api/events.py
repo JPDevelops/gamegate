@@ -3,16 +3,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
-from app.deps import get_event_repo, get_ingest_service
+from app.deps import get_event_repo, get_ingest_service, get_settings_service
 from app.models.event import Event, EventIn
 from app.security import require_api_token
-from app.services.ingest_service import IngestService
+from app.services.ingest_service import IngestService, message_identity
 from app.services.repositories import EventRepository
+from app.services.settings_service import SettingsService
 
 router = APIRouter(dependencies=[Depends(require_api_token)])
 
 EventRepoDep = Annotated[EventRepository, Depends(get_event_repo)]
 IngestDep = Annotated[IngestService, Depends(get_ingest_service)]
+SettingsDep = Annotated[SettingsService, Depends(get_settings_service)]
 
 
 @router.post("/events", response_model=Event, status_code=201)
@@ -36,6 +38,33 @@ def mark_unread(event_id: str, repo: EventRepoDep) -> dict:
     if not repo.mark_read(event_id, read=False):
         raise HTTPException(status_code=404, detail="Unknown event")
     return {"unread": event_id}
+
+
+class MarkUrgent(BaseModel):
+    urgent: bool
+
+
+@router.post("/events/{event_id}/mark")
+def mark_urgent(
+    event_id: str, body: MarkUrgent, repo: EventRepoDep, settings: SettingsDep
+) -> dict:
+    """Per-message 'Urgent' / 'Not urgent' mark. Re-prioritizes THIS message and
+    teaches GameGate the sender's preference (stored locally): urgent → VIP
+    (always breaks through); not-urgent → never-urgent list (always held). Both
+    override the AI's guess, so future messages from that sender follow the rule."""
+    event = repo.find_by_id(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Unknown event")
+    who = message_identity(event.source.value, event.sender, event.title)
+    if body.urgent:
+        repo.set_priority(event_id, "urgent", requires_action=True)
+        settings.toggle_sender("vip_senders", who, present=True)
+        settings.toggle_sender("never_urgent_senders", who, present=False)
+    else:
+        repo.set_priority(event_id, "informational", requires_action=False)
+        settings.toggle_sender("never_urgent_senders", who, present=True)
+        settings.toggle_sender("vip_senders", who, present=False)
+    return {"id": event_id, "urgent": body.urgent, "learned": who}
 
 
 @router.post("/events/read-all")

@@ -15,6 +15,10 @@ DEFS = {
     "overlay_duration_s": {"kind": "int", "default": 8, "min": 4, "max": 20},
     "freshness_minutes": {"kind": "int", "default": 10, "min": 1, "max": 120},
     "vip_senders": {"kind": "list", "default": []},
+    # Senders the user marked "not urgent" — their messages are always held (never
+    # break through), overriding VIP/keyword/AI. Built by the per-message
+    # "Not urgent" button so GameGate learns each user's preferences locally.
+    "never_urgent_senders": {"kind": "list", "default": []},
     "urgent_keywords": {"kind": "list", "default": ["urgent", "asap", "emergency"]},
     # AI classifier: whether to score incoming notifications with an LLM. The
     # key itself is a SECRET, stored separately and NEVER returned to clients
@@ -187,12 +191,24 @@ class SettingsService:
             if any(len(x) > 200 for x in value):
                 raise ValueError(f"{key} entries are limited to 200 characters")
             cleaned = [x.strip() for x in value if x.strip()]
-            if key == "vip_senders":
+            if key in ("vip_senders", "never_urgent_senders"):
                 cleaned = [normalize_sender(x) for x in cleaned]
             else:
                 cleaned = [x.lower() for x in cleaned]
-            return cleaned
+            # De-dupe while preserving order (marks can add the same sender twice).
+            return list(dict.fromkeys(cleaned))
         raise ValueError(f"Unhandled kind {kind}")
+
+    def toggle_sender(self, key: str, value: str, present: bool) -> dict:
+        """Add (present=True) or remove a sender from a list setting — used by the
+        per-message urgent/not-urgent marks. Returns the updated settings."""
+        current = list(self.get_all().get(key, []))
+        norm = normalize_sender(value)
+        if present and norm and norm not in current:
+            current.append(norm)
+        elif not present:
+            current = [s for s in current if s != norm]
+        return self.update({key: current})
 
     @staticmethod
     def _encode(definition, value) -> str:

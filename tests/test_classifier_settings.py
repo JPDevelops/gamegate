@@ -109,3 +109,48 @@ def test_ingest_skips_ai_when_disabled(tmp_path, monkeypatch):
     event, _created, _decision = IngestService(db, Settings()).ingest(_event())
     assert event.priority == EventPriority.INFORMATIONAL
     assert "ai" not in event.metadata
+
+
+def test_mark_not_urgent_downgrades_and_teaches(client):
+    """Marking a message not-urgent drops it AND remembers the sender so future
+    messages from them are held — even when a keyword would flag them urgent."""
+    from datetime import UTC, datetime
+    now = datetime.now(UTC).isoformat()
+    ev = client.post("/events", json={
+        "source": "text", "external_id": "b1", "sender": "Text", "title": "Blink",
+        "content": "Motion detected", "received_at": now, "priority": "urgent",
+    }).json()
+    r = client.post(f"/events/{ev['id']}/mark", json={"urgent": False})
+    assert r.status_code == 200 and r.json()["learned"] == "blink"
+    # The sender is now on the never-urgent list...
+    assert "blink" in client.get("/settings").json()["never_urgent_senders"]
+    # ...so a NEW Blink message with an urgent keyword is still held (informational).
+    ev2 = client.post("/events", json={
+        "source": "text", "external_id": "b2", "sender": "Text", "title": "Blink",
+        "content": "URGENT motion", "received_at": now, "priority": "informational",
+    }).json()
+    assert ev2["priority"] == "informational"   # mark beats the urgent keyword
+
+
+def test_mark_urgent_adds_vip_and_breaks_through(client):
+    from datetime import UTC, datetime
+    now = datetime.now(UTC).isoformat()
+    ev = client.post("/events", json={
+        "source": "gmail", "external_id": "g1", "sender": "Boss <boss@work.com>",
+        "title": "hi", "content": "call me", "received_at": now, "priority": "informational",
+    }).json()
+    r = client.post(f"/events/{ev['id']}/mark", json={"urgent": True})
+    assert r.json()["learned"] == "boss@work.com"
+    assert "boss@work.com" in client.get("/settings").json()["vip_senders"]
+    # A new message from that sender now comes in urgent.
+    ev2 = client.post("/events", json={
+        "source": "gmail", "external_id": "g2", "sender": "Boss <boss@work.com>",
+        "title": "yo", "content": "later", "received_at": now, "priority": "informational",
+    }).json()
+    assert ev2["priority"] == "urgent"
+
+
+def test_message_identity_picks_the_right_who():
+    from app.services.ingest_service import message_identity
+    assert message_identity("text", "Text", "Blink") == "blink"
+    assert message_identity("gmail", "Boss <boss@work.com>", "subject") == "boss@work.com"
