@@ -25,7 +25,7 @@ from pathlib import Path
 log = logging.getLogger("gamegate.updater")
 
 # Bumped every release; the tag on GitHub (vX.Y.Z) is compared against this.
-AGENT_VERSION = "0.5.13"
+AGENT_VERSION = "0.5.14"
 
 REPO = "JPDevelops/gamegate"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -190,14 +190,30 @@ def apply_update_mode() -> None:
     time.sleep(2)  # give the old process a moment to fully exit and release the file
     _kill_processes_using(target)  # make sure nothing from the old image locks it
     src = sys.executable
+    # ATOMIC swap (fixes "keeps closing" crash loop): copy the new build to a
+    # sidecar FIRST, then os.replace() it into place. copyfile() straight onto the
+    # live exe is NOT atomic — an interrupted copy (AV lock, sleep, this process
+    # killed) left a TRUNCATED GameGate.exe that crashed on every launch and could
+    # never self-heal. With a sidecar + atomic rename, the installed exe is only
+    # ever the old-working file or the fully-written new one — never half a file.
+    sidecar = target + f".new-{os.getpid()}"
+    try:
+        shutil.copyfile(src, sidecar)
+    except OSError:
+        log.exception("Could not stage new build to sidecar %s", sidecar)
+        with contextlib.suppress(OSError):
+            os.remove(sidecar)
+        return
     for _ in range(60):  # up to ~30s, retry while the old exe is still locked
         try:
-            shutil.copyfile(src, target)
+            os.replace(sidecar, target)  # atomic on the same volume
             break
         except OSError:
             time.sleep(0.5)
     else:
         log.error("Could not replace %s (still locked)", target)
+        with contextlib.suppress(OSError):
+            os.remove(sidecar)  # don't litter a stale sidecar next to the exe
         return
     log.info("Update applied; relaunching %s", target)
     with contextlib.suppress(OSError):

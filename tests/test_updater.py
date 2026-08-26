@@ -81,3 +81,41 @@ def test_apply_update_records_then_swaps(monkeypatch, tmp_path):
     assert updater.apply_update("v9.9.9", "http://x/GameGate.exe") is True
     assert swaps == ["http://x/GameGate.exe"]
     assert mp.exists()                                   # attempt recorded before swap
+
+
+def _stub_swap_env(monkeypatch, tmp_path, new_bytes=b"NEW-BUILD" * 200_000):
+    """A fake 'freshly-downloaded exe' at sys.executable + an installed target."""
+    src = tmp_path / "GameGate-new.exe"
+    src.write_bytes(new_bytes)
+    target = tmp_path / "GameGate.exe"
+    target.write_bytes(b"OLD-BUILD")
+    monkeypatch.setattr(updater.sys, "executable", str(src))
+    monkeypatch.setattr(updater.sys, "argv", ["gg", "--apply-update", str(target)])
+    monkeypatch.setattr(updater.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(updater, "_kill_processes_using", lambda *_: None)
+    launched = []
+    monkeypatch.setattr(updater.subprocess, "Popen", lambda cmd, **kw: launched.append(cmd))
+    return src, target, launched
+
+
+def test_apply_update_mode_swaps_atomically(monkeypatch, tmp_path):
+    """The installed exe ends up as the FULL new build and the app is relaunched;
+    no stray sidecar file is left next to it."""
+    src, target, launched = _stub_swap_env(monkeypatch, tmp_path)
+    updater.apply_update_mode()
+    assert target.read_bytes() == src.read_bytes()          # fully replaced
+    assert launched == [[str(target), "--show"]]            # relaunched with the window
+    # No half-written sidecar litter left behind.
+    assert [p.name for p in tmp_path.iterdir() if ".new-" in p.name] == []
+
+
+def test_apply_update_mode_leaves_old_exe_intact_if_replace_fails(monkeypatch, tmp_path):
+    """If the atomic replace never succeeds (target stays locked), the installed
+    exe must remain the OLD working build — never a truncated file — and nothing
+    is relaunched. This is the crash-loop guard: a failed swap can't brick the app."""
+    src, target, launched = _stub_swap_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(updater.os, "replace", lambda *_: (_ for _ in ()).throw(OSError("locked")))
+    updater.apply_update_mode()
+    assert target.read_bytes() == b"OLD-BUILD"              # untouched, not truncated
+    assert launched == []                                   # did not relaunch a bad exe
+    assert [p.name for p in tmp_path.iterdir() if ".new-" in p.name] == []  # sidecar cleaned up
