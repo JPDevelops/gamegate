@@ -120,6 +120,30 @@
                border-radius:7px; padding:6px 12px; font-size:12.5px; cursor:pointer; }
   .msg-title { font-size:13.5px; font-weight:500; }
 
+  /* clean message row: priority as a thin left accent (not a bulky pill), even
+     top-alignment so cards never look lopsided, quiet aligned icon actions. */
+  .msg { display:flex; align-items:flex-start; gap:13px; background:var(--bg-card);
+         border:1px solid var(--line-soft); border-left:3px solid var(--line);
+         border-radius:var(--radius); padding:12px 12px 12px 14px; margin-bottom:8px; }
+  .msg.urgent { border-left-color:var(--red); }
+  .msg.actionable { border-left-color:var(--amber); }
+  .msg-body { flex:1; min-width:0; }
+  .msg-who { font-size:13.5px; font-weight:600; color:var(--text);
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .msg-what { font-size:13px; color:var(--text-dim); margin-top:3px; line-height:1.4;
+              display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .msg-meta { font-size:11.5px; color:var(--muted); margin-top:7px;
+              display:flex; align-items:center; gap:6px; min-width:0; }
+  .msg-meta svg { width:13px; height:13px; opacity:.7; }
+  .msg-acts { flex:none; display:flex; gap:2px; }
+  .iact { background:none; border:1px solid transparent; color:var(--muted); border-radius:8px;
+          width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;
+          cursor:pointer; transition:background .12s, border-color .12s, color .12s; }
+  .iact svg { width:17px; height:17px; }
+  .iact:hover { background:var(--bg-hover); border-color:var(--line); color:var(--text); }
+  .iact.on-urg { color:var(--red); }
+  .iact.on-done { color:var(--green); }
+
   /* recaps */
   .recap-card { display:flex; align-items:center; gap:14px; padding:12px 14px; }
   .art { width:106px; height:50px; border-radius:7px; object-fit:cover; flex:none;
@@ -226,6 +250,10 @@ const I = {
   mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.9-.9L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;vertical-align:-3px"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  bellfill: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke-width="1.6"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  checkdone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.4 2.4 4.6-5"/></svg>',
 };
 const SRCICON = { gmail: I.mail, discord: I.chat, slack: I.chat, text: I.phone, system: "" };
 
@@ -244,6 +272,25 @@ const ago = (iso) => { const m = (Date.now() - new Date(iso)) / 60000;
   return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric"}); };
 const fmtDur = (s) => { const m = Math.floor(s/60), h = Math.floor(m/60);
   return h ? h+"h "+String(m%60).padStart(2,"0")+"m" : m+"m "+String(s%60).padStart(2,"0")+"s"; };
+// Friendly display name — strips raw Windows AUMID junk ("ScreenSketch_8wek…!App")
+// and maps a few common ones, so no ugly package ids show in the list.
+const NAMEMAP = { screensketch:"Snip & Sketch", gamingapp:"Xbox", xbox:"Xbox",
+  windowsstore:"Microsoft Store", yourphone:"Phone Link", phonelink:"Phone Link",
+  windowsnotepad:"Notepad", microsoftedge:"Edge" };
+function cleanName(s){
+  s = String(s ?? "").trim();
+  const m = s.match(/^([A-Za-z][\w. ]*?)_[0-9a-z]{8,}!/);   // AUMID: Name_<hash>!App
+  if (m) s = m[1];
+  const key = s.toLowerCase().replace(/[^a-z]/g, "");
+  for (const k in NAMEMAP) if (key.includes(k)) return NAMEMAP[k];
+  return s.replace(/\.(exe|app)$/i, "").trim() || "Notification";
+}
+// Who a message is from (bold line): captured chat apps put the app label in
+// `sender` and the real contact/channel in `title`; email/system put it in sender.
+function whoOf(e){
+  const sender = cleanName(e.sender), title = cleanName(e.title);
+  return ["text","discord","slack"].includes(e.source) ? (title || sender) : (sender || title);
+}
 
 let cache = { recaps: [], events: [], connections: null, status: null, userSettings: null };
 let msgFilter = "all";
@@ -363,10 +410,18 @@ const views = {
     const bgArt = s.app_id
       ? `<img class="hero-art-bg" src="https://cdn.cloudflare.steamstatic.com/steam/apps/${esc(s.app_id)}/header.jpg" onerror="this.remove()">`
       : (s.application ? `<img class="hero-art-bg" src="/art?game=${encodeURIComponent(s.application)}" onerror="this.remove()">` : "");
-    const msgCard = (i) => `
-      <div class="card row"><span class="chip ${esc(i.priority)}">${esc(i.priority)}</span>
-        <div style="min-width:0"><div class="msg-title">${esc(i.sender)} — ${esc(i.title)}</div>
-        <div class="muted">${SRCICON[i.source]||""} ${esc(i.source)} · ${ago(i.received_at)}</div></div></div>`;
+    const msgCard = (i) => {
+      const ai = i.metadata && i.metadata.ai;
+      const what = (ai && ai.summary) || i.content || i.title || "";
+      return `
+      <div class="msg ${esc(i.priority)}">
+        <div class="msg-body">
+          <div class="msg-who">${esc(whoOf(i))}</div>
+          ${what ? `<div class="msg-what">${esc(what)}</div>` : ""}
+          <div class="msg-meta">${SRCICON[i.source]||""}<span>${esc(i.source)}</span> · ${ago(i.received_at)}</div>
+        </div>
+      </div>`;
+    };
     return `<a class="back" href="#/recaps">${I.back} All recaps</a>
     <div class="hero">
       ${bgArt}<div class="hero-grad"></div>
@@ -411,22 +466,21 @@ const views = {
 
     const card = (e) => {
       const ai = e.metadata && e.metadata.ai;
-      const aiLine = ai && ai.summary
-        ? `<div class="muted" style="margin-top:3px;color:var(--green,#2ee06f)">🤖 ${esc(ai.summary)}${ai.urgency ? " · urgency " + esc(String(ai.urgency)) + "/10" : ""}</div>`
-        : "";
-      const mark = e.priority === "urgent"
-        ? `<button class="readbtn" title="Teach GameGate this sender isn't urgent" onclick="markUrgent('${e.id}', false)">Not urgent</button>`
-        : `<button class="readbtn" title="Teach GameGate this sender is urgent" onclick="markUrgent('${e.id}', true)">Mark urgent</button>`;
+      const what = (ai && ai.summary) || e.content || e.title || "";
+      const urg = ai && ai.urgency ? ` · urgency ${esc(String(ai.urgency))}/10` : "";
+      const isUrg = e.priority === "urgent", isRead = !!e.read_at;
       return `
-      <div class="card row">
-        <span class="chip ${esc(e.priority)}">${esc(e.priority)}</span>
-        <div style="min-width:0"><div class="msg-title">${esc(e.sender)} — ${esc(e.title)}</div>
-        <div class="muted">${SRCICON[e.source]||""} ${esc(e.source)} · ${ago(e.received_at)}</div>${aiLine}</div>
-        <div class="row" style="gap:6px;flex:none">
-          ${mark}
-          ${e.read_at
-            ? `<button class="readbtn" onclick="markRead('${e.id}', false)">Mark unread</button>`
-            : `<button class="readbtn" onclick="markRead('${e.id}', true)">✓ Read</button>`}
+      <div class="msg ${esc(e.priority)}">
+        <div class="msg-body">
+          <div class="msg-who">${esc(whoOf(e))}</div>
+          ${what ? `<div class="msg-what">${esc(what)}</div>` : ""}
+          <div class="msg-meta">${SRCICON[e.source]||""}<span>${esc(e.source)}</span> · ${ago(e.received_at)}${urg}</div>
+        </div>
+        <div class="msg-acts">
+          <button class="iact ${isUrg?"on-urg":""}" title="${isUrg?"Not urgent (hold this sender)":"Mark urgent (always break through)"}"
+            onclick="markUrgent('${e.id}', ${!isUrg})">${I.bell}</button>
+          <button class="iact ${isRead?"on-done":""}" title="${isRead?"Mark unread":"Mark read"}"
+            onclick="markRead('${e.id}', ${!isRead})">${isRead?I.checkdone:I.check}</button>
         </div>
       </div>`;
     };
