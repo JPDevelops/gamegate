@@ -119,11 +119,23 @@ class NotificationDbReader:
         log.info("Notification capture started (reading %s from order %d)",
                  db_path().name, self._last_order)
         self._log_recent_apps()  # one-time diagnostic: what's actually in the DB
+        # Heartbeat: every ~2 min re-log that capture is alive + a fresh snapshot
+        # of the newest DB rows. Without this the log is SILENT whenever nothing
+        # is captured, so "no notifications" is indistinguishable from "reader
+        # died" or "Windows isn't writing them" — any log pull now shows the
+        # current DB tail and the highest order we've processed.
+        heartbeat_polls = max(1, 120 // max(1, self.poll_seconds))
+        polls = 0
         while not stop.is_set():
             try:
                 self._poll_once()
             except Exception:  # noqa: BLE001 — one bad poll must not kill the loop
                 log.exception("Notification DB poll failed; continuing")
+            polls += 1
+            if polls % heartbeat_polls == 0:
+                log.info("Notification watch alive — processed through order %d",
+                         self._last_order)
+                self._log_recent_apps()
             stop.wait(self.poll_seconds)
 
     def _query(self, sql: str, params: tuple):

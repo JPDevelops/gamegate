@@ -287,7 +287,16 @@ def _run(stop: threading.Event, address, app_password, ingest, poll_seconds) -> 
             _record_health(False, "Gmail rejected the login — reconnect the app password")
             stop.wait(max(poll_seconds, 300))
             continue
-        except Exception as exc:  # noqa: BLE001 — network blips etc.; retry next cycle
+        except OSError as exc:
+            # Transient network trouble (timeout, DNS, connection reset, TLS) —
+            # by far the common case. Log a single readable line, NOT a 15-line
+            # traceback, so it can't drown the log (a full stack here made the
+            # notification log unreadable while diagnosing capture). Retries next
+            # cycle. TimeoutError/ssl.SSLError/socket errors are all OSError.
+            log.warning("Gmail IMAP poll failed (%s: %s); will retry",
+                        type(exc).__name__, exc)
+            _record_health(False, str(exc)[:200])
+        except Exception as exc:  # noqa: BLE001 — genuinely unexpected; keep the trace
             log.exception("Gmail IMAP poll failed; will retry")
             _record_health(False, str(exc)[:200])
         stop.wait(poll_seconds)
