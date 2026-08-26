@@ -22,22 +22,6 @@ log = logging.getLogger("gamegate.banners")
 
 _SETTINGS_KEY = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
 
-# AUMID substrings for the noisy *messaging* apps GameGate itself surfaces. We
-# mute ONLY these; every other app keeps its normal banners. Browsers are left
-# out on purpose — muting them would silence every web notification, not chat.
-MESSAGING_MARKERS = (
-    "discord", "yourphone", "phonelink", "slack", "teams",
-    "whatsapp", "telegram", "outlook", "messenger", "signal",
-)
-
-
-def is_messaging_app(aumid: str) -> bool:
-    """True if this app id is one of the chat/message sources GameGate surfaces —
-    pure and testable (no registry access)."""
-    low = (aumid or "").lower()
-    return any(marker in low for marker in MESSAGING_MARKERS)
-
-
 # When silencing, we mute EVERY app's banner (so nothing pops — the user asked
 # for zero pop-ups, incl. phone-mirrored apps like Blink that come via Phone
 # Link) except GameGate's own, so its overlay/toasts are never muted by itself.
