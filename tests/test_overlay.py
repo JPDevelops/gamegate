@@ -74,10 +74,12 @@ def test_rounded_rect_points_shape():
 
 
 def test_overlay_is_default_notifier():
-    from overlay import show_overlay
+    # v0.5.16: the overlay is still the default, but it now renders in a CHILD
+    # process (show_overlay_subprocess) so its Tk can't crash the tray.
+    from tray_app import show_overlay_subprocess
 
-    assert pick_notifier({}) is show_overlay
-    assert pick_notifier({"notifier": "overlay"}) is show_overlay
+    assert pick_notifier({}) is show_overlay_subprocess
+    assert pick_notifier({"notifier": "overlay"}) is show_overlay_subprocess
 
 
 def test_toast_available_via_config():

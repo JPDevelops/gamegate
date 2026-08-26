@@ -24,6 +24,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -42,7 +43,6 @@ from detector import (
 from overlay import (
     enable_dpi_awareness,
     show_consent_prompt,
-    show_overlay,
     show_update_prompt,
 )
 
@@ -555,13 +555,66 @@ def run_window() -> None:
     webview.start(_window_chrome, window)
 
 
+def show_overlay_subprocess(title: str, body: str, duration_s: int = 8, sound: bool = True) -> bool:
+    """Render the break-through card in a SEPARATE process (v0.5.16).
+
+    The card is Tkinter, and Tk MUST own the thread it runs on. The tray's main
+    thread runs the pystray win32 message loop, so the pump/menu callbacks that
+    show cards were creating a tk.Tk() on a *background* thread — a native-crash
+    risk on Windows that (rarely, but really) took the whole tray down and orphaned
+    the dashboard window. Spawning a child process lets Tk run on ITS OWN main
+    thread, exactly like the dashboard window already does, so a bad card can never
+    crash the tray. Blocks until the card closes (same sequential contract as the
+    in-process overlay — cards never stack). Returns True only on a clean render so
+    the pump acks solely on a real show; params go via a temp JSON file to dodge
+    argv escaping of newlines/unicode in message text."""
+    payload = {"title": title, "body": body, "duration_s": duration_s, "sound": sound}
+    fd, path = tempfile.mkstemp(prefix="gg_overlay_", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        cmd = ([sys.executable, "--overlay", path] if getattr(sys, "frozen", False)
+               else [sys.executable, __file__, "--overlay", path])
+        result = subprocess.run(
+            cmd, env=_child_env(), timeout=max(4, duration_s) + 30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return result.returncode == 0
+    except Exception:  # noqa: BLE001 — a failed card must not kill the pump
+        log.exception("Overlay subprocess failed")
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(path)
+
+
+def run_overlay() -> None:
+    """Entry point for `--overlay <params.json>`: render one break-through card on
+    THIS process's main thread (Tk-safe), then exit 0 on success / 1 on failure."""
+    from overlay import show_overlay
+    path = sys.argv[sys.argv.index("--overlay") + 1]
+    try:
+        with open(path, encoding="utf-8") as fh:
+            p = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        log.exception("Overlay child could not read params %s", path)
+        raise SystemExit(1) from None
+    ok = show_overlay(
+        p.get("title", ""), p.get("body", ""),
+        int(p.get("duration_s", 8)), bool(p.get("sound", True)),
+    )
+    raise SystemExit(0 if ok else 1)
+
+
 def pick_notifier(config: dict):
     """Jules' spec: overlay (top-right box + sound) is the default; native
     toasts remain available via config {"notifier": "toast"} — note Focus
-    Assist suppresses toasts during fullscreen gaming."""
+    Assist suppresses toasts during fullscreen gaming. The overlay renders in a
+    child process (show_overlay_subprocess) so its Tk runtime can never crash the
+    tray (v0.5.16)."""
     if config.get("notifier", "overlay") == "toast":
         return windows_toast
-    return show_overlay
+    return show_overlay_subprocess
 
 
 def run_tray(lock: "socket.socket | None" = None, open_window_on_start: bool = False) -> None:
@@ -884,6 +937,11 @@ if __name__ == "__main__":
         apply_update_mode()
         raise SystemExit(0)
     enable_dpi_awareness()
+    if "--overlay" in sys.argv:
+        # Break-through card child: render one Tk card on this main thread, exit.
+        # Isolated from the tray so Tk can never crash it (v0.5.16).
+        run_overlay()
+        raise SystemExit(0)
     if "--window" in sys.argv:
         log.info("window process starting")
         run_window()  # window process: no tray, no lock — the tray owns those
