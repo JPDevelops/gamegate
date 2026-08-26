@@ -288,3 +288,54 @@ def test_no_cross_thread_tray_icon_mutation():
         if "icon.update_menu(" in code or "icon.icon" in code:
             offenders.append(f"{lineno}: {raw.strip()}")
     assert not offenders, "cross-thread tray icon mutation reintroduced:\n" + "\n".join(offenders)
+
+
+def test_pick_notifier_defaults_to_subprocess_overlay():
+    """v0.5.16: the default notifier renders the card in a CHILD process (so Tk
+    can never crash the tray), not in-process. 'toast' still selects winotify."""
+    import tray_app
+    assert tray_app.pick_notifier({}) is tray_app.show_overlay_subprocess
+    assert tray_app.pick_notifier({"notifier": "overlay"}) is tray_app.show_overlay_subprocess
+    assert tray_app.pick_notifier({"notifier": "toast"}) is tray_app.windows_toast
+
+
+def test_show_overlay_subprocess_spawns_child_and_maps_exit_code(monkeypatch):
+    """It writes the card params to a temp file, launches `--overlay <path>`, and
+    returns True only when the child exits 0 (so the pump acks only on a real
+    show). The temp file is cleaned up regardless."""
+    import json as _json
+
+    import tray_app
+
+    calls = {}
+
+    class _Result:
+        def __init__(self, rc):
+            self.returncode = rc
+
+    def fake_run(cmd, **kwargs):
+        calls["cmd"] = cmd
+        # The param file must exist and hold what we passed while the child runs.
+        path = cmd[cmd.index("--overlay") + 1]
+        with open(path, encoding="utf-8") as fh:
+            calls["params"] = _json.load(fh)
+        return _Result(0)
+
+    monkeypatch.setattr(tray_app.subprocess, "run", fake_run)
+    ok = tray_app.show_overlay_subprocess("Boss", "Call me", duration_s=6, sound=False)
+    assert ok is True
+    assert "--overlay" in calls["cmd"]
+    assert calls["params"] == {"title": "Boss", "body": "Call me", "duration_s": 6, "sound": False}
+    # temp file cleaned up
+    path = calls["cmd"][calls["cmd"].index("--overlay") + 1]
+    assert not Path(path).exists()
+
+    # Non-zero exit → False (pump will retry, not ack).
+    monkeypatch.setattr(tray_app.subprocess, "run", lambda cmd, **k: _Result(1))
+    assert tray_app.show_overlay_subprocess("x", "y") is False
+
+    # A launch failure is swallowed → False, never raises into the pump.
+    def boom(cmd, **k):
+        raise OSError("cannot spawn")
+    monkeypatch.setattr(tray_app.subprocess, "run", boom)
+    assert tray_app.show_overlay_subprocess("x", "y") is False
