@@ -3,11 +3,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
-from app.deps import get_event_repo, get_ingest_service, get_settings_service
+from app.deps import (
+    get_event_repo,
+    get_ingest_service,
+    get_notification_repo,
+    get_settings_service,
+)
 from app.models.event import Event, EventIn
 from app.security import require_api_token
 from app.services.ingest_service import IngestService, message_identity
-from app.services.repositories import EventRepository
+from app.services.repositories import EventRepository, NotificationRepository
 from app.services.settings_service import SettingsService
 
 router = APIRouter(dependencies=[Depends(require_api_token)])
@@ -15,6 +20,7 @@ router = APIRouter(dependencies=[Depends(require_api_token)])
 EventRepoDep = Annotated[EventRepository, Depends(get_event_repo)]
 IngestDep = Annotated[IngestService, Depends(get_ingest_service)]
 SettingsDep = Annotated[SettingsService, Depends(get_settings_service)]
+NotificationRepoDep = Annotated[NotificationRepository, Depends(get_notification_repo)]
 
 
 @router.post("/events", response_model=Event, status_code=201)
@@ -73,7 +79,8 @@ class Silence(BaseModel):
 
 @router.post("/events/{event_id}/silence")
 def silence_source(
-    event_id: str, body: Silence, repo: EventRepoDep, settings: SettingsDep
+    event_id: str, body: Silence, repo: EventRepoDep, settings: SettingsDep,
+    notifications: NotificationRepoDep,
 ) -> dict:
     """Per-message 'Silence' (bell): stop THIS message's app/source from ever
     popping an on-screen overlay again. It's still captured (kept in the inbox +
@@ -85,7 +92,21 @@ def silence_source(
         raise HTTPException(status_code=404, detail="Unknown event")
     who = message_identity(event.source.value, event.sender, event.title)
     settings.toggle_sender("muted_sources", who, present=body.silenced)
-    return {"id": event_id, "silenced": body.silenced, "app": who}
+    # Silencing stops FUTURE overlays via routing, but any of this source's
+    # notifications ALREADY queued (from before the silence) would keep popping —
+    # so clear that backlog too (live bug 2026-08-27: "i silenced blink but it's
+    # still notifying me"). Match pending notifications by the same who-identity.
+    dismissed = 0
+    if body.silenced:
+        to_drop = [
+            n["id"] for n in notifications.pending(limit=1000)
+            if message_identity(
+                n["event"].get("source", ""), n["event"].get("sender", ""),
+                n["event"].get("title", ""),
+            ) == who
+        ]
+        dismissed = notifications.dismiss_pending(to_drop)
+    return {"id": event_id, "silenced": body.silenced, "app": who, "dismissed": dismissed}
 
 
 @router.post("/events/read-all")

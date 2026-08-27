@@ -195,3 +195,30 @@ def test_silence_holds_the_app_but_still_captures(client):
     r2 = client.post(f"/events/{ev['id']}/silence", json={"silenced": False})
     assert r2.status_code == 200
     assert "blink" not in client.get("/settings").json()["muted_sources"]
+
+
+def test_silence_clears_already_queued_backlog(client):
+    """Live bug (2026-08-27): silencing must ALSO drop that source's notifications
+    that were queued BEFORE the silence, or the backlog keeps popping overlays
+    after the user hit silence."""
+    from datetime import UTC, datetime
+    client.post("/status", json={"state": "available"})
+    now = datetime.now(UTC).isoformat()
+    # Two Blink motions break through and QUEUE as pending overlays (pre-silence).
+    for i in (1, 2):
+        client.post("/events", json={
+            "source": "text", "external_id": f"bk{i}", "sender": "Text", "title": "Blink",
+            "content": "Motion detected", "received_at": now, "priority": "urgent",
+        })
+    pending = client.get("/notifications/pending").json()
+    blink_pending = [n for n in pending if n["event"]["title"] == "Blink"]
+    assert len(blink_pending) == 2  # both are queued and would pop
+
+    # Silence Blink from one of them → the backlog is cleared, not just future ones.
+    blink_ev = next(e for e in client.get("/events?limit=100").json() if e["title"] == "Blink")
+    r = client.post(f"/events/{blink_ev['id']}/silence", json={"silenced": True})
+    assert r.status_code == 200 and r.json()["dismissed"] == 2
+
+    # Pending queue no longer has Blink — nothing left to pop.
+    pending2 = client.get("/notifications/pending").json()
+    assert not any(n["event"]["title"] == "Blink" for n in pending2)

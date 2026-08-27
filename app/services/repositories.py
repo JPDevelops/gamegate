@@ -376,6 +376,26 @@ class NotificationRepository:
             )
         return cur.rowcount > 0
 
+    def dismiss_pending(self, notification_ids: list[str]) -> int:
+        """Drop specific still-pending notifications from the queue (mark delivered
+        with failed_at, like abandon) so they never pop. Used when a source is
+        SILENCED: the routing stops NEW overlays, but any already-queued backlog
+        from that source must also be cleared, or it keeps popping after silence
+        (live bug 2026-08-27). Returns how many were actually dismissed."""
+        if not notification_ids:
+            return 0
+        conn = self.db.connection()
+        dismissed = 0
+        with conn:
+            for nid in notification_ids:
+                cur = conn.execute(
+                    "UPDATE notifications SET delivered = 1, failed_at = ?"
+                    " WHERE id = ? AND delivered = 0",
+                    (_now(), nid),
+                )
+                dismissed += cur.rowcount
+        return dismissed
+
 
 class ConnectorHealthRepository:
     """Per-connector liveness. Connectors report a heartbeat on each poll; the
