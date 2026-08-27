@@ -25,7 +25,7 @@ from pathlib import Path
 log = logging.getLogger("gamegate.updater")
 
 # Bumped every release; the tag on GitHub (vX.Y.Z) is compared against this.
-AGENT_VERSION = "0.5.18"
+AGENT_VERSION = "0.5.19"
 
 REPO = "JPDevelops/gamegate"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"

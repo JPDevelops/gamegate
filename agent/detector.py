@@ -306,6 +306,8 @@ def resolve_display(game: str, processes: dict[str, str]) -> tuple[str, str | No
         return KNOWN_GAMES[game], None
     if game == _MINECRAFT_JAVA:
         return "Minecraft", None
+    if game == "fullscreen-game":  # caught fullscreen but couldn't name the exe
+        return "Game", None
     exe_path = processes.get(game, "")
     if exe_path:
         identity = steam_game_identity(exe_path)
@@ -349,6 +351,51 @@ def windows_minecraft_java_running() -> bool:
     return False
 
 
+def windows_foreground_fullscreen_game() -> str | None:
+    """Generic 'ANY game' detector — the scalable catch-all (Jules: "it should
+    detect all games", 2026-08-27).
+
+    Asks Windows the SAME question it asks itself before auto-hiding notifications
+    during a game: SHQueryUserNotificationState. When it returns
+    QUNS_RUNNING_D3D_FULL_SCREEN, a full-screen Direct3D app (a game) is running —
+    from ANY source, no launcher/Steam/list needed. We then name it from the
+    foreground window's process (e.g. 'eldenring.exe'). Returns that exe name
+    lowercased, a generic sentinel if we can't name it, or None.
+
+    Scope/limit (stated honestly): this fires for exclusive/borderless FULL-SCREEN
+    games — which is how Windows itself defines "gaming". A game in plain WINDOWED
+    mode won't trip it; those are still caught by the launcher-folder / Steam /
+    known-game / manual layers above. Video players/slideshows report a DIFFERENT
+    state (presentation/busy), so they don't false-positive here."""
+    try:
+        import ctypes
+    except Exception:  # noqa: BLE001 — non-Windows / no ctypes
+        return None
+    try:
+        QUNS_RUNNING_D3D_FULL_SCREEN = 3
+        state = ctypes.c_int()
+        # HRESULT S_OK == 0 on success; fills `state` with the notification state.
+        if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)) != 0:
+            return None
+        if state.value != QUNS_RUNNING_D3D_FULL_SCREEN:
+            return None
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return "fullscreen-game"
+        pid = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return "fullscreen-game"
+        try:
+            import psutil
+            return (psutil.Process(pid.value).name() or "").lower() or "fullscreen-game"
+        except Exception:  # noqa: BLE001 — psutil miss / access denied
+            return "fullscreen-game"
+    except Exception:  # noqa: BLE001 — any Win32 error → treat as "not gaming"
+        return None
+
+
 def windows_steam_running_app_id() -> int:
     """Steam writes the current game's app id here; 0 when not playing."""
     try:
@@ -370,10 +417,12 @@ def detect_game(
     steam_app_id_reader=windows_steam_running_app_id,
     ignore_list: list[str] | None = None,
     minecraft_java_reader=windows_minecraft_java_running,
+    fullscreen_reader=windows_foreground_fullscreen_game,
 ) -> str | None:
-    """Return the detected game's label, or None. Layered:
+    """Return the detected game's label, or None. Layered, most-specific first so
+    we get the best NAME, then a generic catch-all so we never MISS a game:
     manual list → built-in known games → launcher-folder paths → Steam registry
-    → Minecraft Java (command line)."""
+    → Minecraft Java (command line) → ANY full-screen game (Windows state)."""
     ignored = HELPER_PROCESSES | set(ignore_list or [])
     for name in manual_list:
         if name in processes:
@@ -401,6 +450,12 @@ def detect_game(
     # Only pay for the cmdline scan when a Java process is actually running.
     if ("javaw.exe" in processes or "java.exe" in processes) and minecraft_java_reader():
         return _MINECRAFT_JAVA
+
+    # Generic catch-all: ANY full-screen game, from any source (no launcher/list).
+    # Last so the layers above win the naming; this ensures we never miss a game.
+    fs_game = fullscreen_reader()
+    if fs_game and fs_game not in ignored:
+        return fs_game
 
     return None
 

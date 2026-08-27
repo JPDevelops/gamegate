@@ -368,3 +368,52 @@ def test_minecraft_java_cmdline_matcher(monkeypatch):
     assert detector.windows_minecraft_java_running() is True
     monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: [chrome, ide])
     assert detector.windows_minecraft_java_running() is False
+
+
+# --- generic "detect ALL games" via fullscreen state (2026-08-27) ------------
+
+def test_fullscreen_game_detected_generically():
+    """The catch-all: any fullscreen game (from Windows' own notification-state
+    signal) is detected even with no launcher/Steam/known-name match, and named
+    from the foreground exe."""
+    from detector import detect_game, resolve_display
+    # No steam, not minecraft, not in a launcher folder — only the fullscreen
+    # reader fires, returning the foreground exe.
+    got = detect_game(DESKTOP, [], True, no_steam, None,
+                      lambda: False, lambda: "eldenring.exe")
+    assert got == "eldenring.exe"
+    assert resolve_display("eldenring.exe", {}) == ("Eldenring", None)
+
+
+def test_fullscreen_sentinel_when_exe_unknown():
+    from detector import detect_game, resolve_display
+    got = detect_game(DESKTOP, [], True, no_steam, None, lambda: False,
+                      lambda: "fullscreen-game")
+    assert got == "fullscreen-game"
+    assert resolve_display("fullscreen-game", {}) == ("Game", None)
+
+
+def test_fullscreen_reader_respects_ignore_and_helpers():
+    from detector import detect_game
+    # If the fullscreen foreground happens to be a helper/ignored process, don't
+    # flag it (belt-and-suspenders against a false positive).
+    assert detect_game(DESKTOP, [], True, no_steam, None, lambda: False,
+                       lambda: "steam.exe") is None
+    assert detect_game(DESKTOP, [], True, no_steam, ["obs64.exe"], lambda: False,
+                       lambda: "obs64.exe") is None
+
+
+def test_no_fullscreen_no_game():
+    from detector import detect_game
+    # Reader says "no fullscreen app" -> plain desktop stays available.
+    assert detect_game(DESKTOP, [], True, no_steam, None, lambda: False,
+                       lambda: None) is None
+
+
+def test_named_layers_win_over_fullscreen_catchall():
+    """A Steam game in a library folder is still named via Steam, not swallowed by
+    the generic fullscreen fallback (which would only give a plain exe name)."""
+    from detector import detect_game
+    got = detect_game({**DESKTOP, **STEAM_GAME}, [], True, no_steam, None,
+                      lambda: False, lambda: "helldivers2.exe")
+    assert got == "helldivers2.exe"  # matched by the launcher-path layer first
