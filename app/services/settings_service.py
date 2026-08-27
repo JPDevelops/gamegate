@@ -55,6 +55,7 @@ VERSION_KEY = "_version"
 CLASSIFIER_KEY_NAME = "classifier_api_key"  # secret; not in DEFS, never returned
 GMAIL_ADDRESS_KEY_NAME = "gmail_address"          # user's own email (returnable)
 GMAIL_PASSWORD_KEY_NAME = "gmail_app_password"    # secret; never returned
+STEAMGRIDDB_KEY_NAME = "steamgriddb_api_key"      # secret; game-art lookups
 
 
 def normalize_sender(sender: str) -> str:
@@ -84,7 +85,31 @@ class SettingsService:
         # boolean for the app password — the secret itself never leaves the server.
         out["gmail_address"] = self._decode_secret(rows.get(GMAIL_ADDRESS_KEY_NAME))
         out["gmail_app_password_set"] = bool(self._decode_secret(rows.get(GMAIL_PASSWORD_KEY_NAME)))
+        # SteamGridDB (game-art) key: only a boolean, never the key itself.
+        out["steamgriddb_api_key_set"] = bool(self._decode_secret(rows.get(STEAMGRIDDB_KEY_NAME)))
         return out
+
+    def get_steamgriddb_key(self) -> str:
+        """The stored SteamGridDB key (server-side use only — never sent to a
+        client)."""
+        row = self.db.connection().execute(
+            "SELECT value FROM settings WHERE key = ?", (STEAMGRIDDB_KEY_NAME,)
+        ).fetchone()
+        return self._decode_secret(row[0]) if row else ""
+
+    def set_steamgriddb_key(self, value: str) -> None:
+        """Store (or clear) the SteamGridDB key and bump the settings version."""
+        conn = self.db.connection()
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (STEAMGRIDDB_KEY_NAME, json.dumps((value or "").strip())),
+            )
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, '1')"
+                " ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
+                (VERSION_KEY,),
+            )
 
     def get_classifier_key(self) -> str:
         """The stored AI API key (server-side use only — never send to a client)."""
