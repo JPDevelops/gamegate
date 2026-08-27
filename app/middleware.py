@@ -14,11 +14,9 @@ from starlette.responses import JSONResponse, Response
 
 CSP = (
     "default-src 'self'; "
-    # /art 307-redirects to the SteamGridDB CDN; browsers apply img-src to the
-    # redirect target, so the CDN host must be allowed or the artwork is blocked
-    # by our own policy (M9).
-    "img-src 'self' https://cdn.cloudflare.steamstatic.com "
-    "https://cdn2.steamgriddb.com https://cdn.steamgriddb.com data:; "
+    # /art now serves a locally-generated SVG cover (same-origin 'self'). Steam
+    # games still use their real header from the Steam CDN, so keep that host.
+    "img-src 'self' https://cdn.cloudflare.steamstatic.com data:; "
     "style-src 'self' 'unsafe-inline'; "        # dashboard uses inline styles
     "script-src 'self' 'unsafe-inline'; "        # and inline handlers
     "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"

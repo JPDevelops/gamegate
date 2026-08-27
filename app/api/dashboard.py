@@ -258,16 +258,6 @@ def connections(
                     "detail": "Not set up — bring your phone's texts into GameGate",
                     "can_connect": True, "connect_label": "Sync text messages"}
 
-    # Game artwork (SteamGridDB key): powers logos for non-Steam games in recaps.
-    if _cls.get("steamgriddb_api_key_set"):
-        artwork = {"state": "connected", "kind": "gridkey",
-                   "detail": "Game logos on — pulling art for your recaps",
-                   "can_disconnect": True}
-    else:
-        artwork = {"state": "disconnected", "kind": "gridkey",
-                   "detail": "Add a free SteamGridDB key to show game logos",
-                   "can_connect": True, "connect_label": "Add key"}
-
     # Fold in live heartbeat health: a connected connector whose last poll errored
     # shows as 'degraded', not a green 'connected' flag.
     _apply_health(gmail, health_repo.get("gmail"))
@@ -282,15 +272,12 @@ def connections(
         "text": textsync,
         "slack": slack,
         "classifier": classifier,
-        "artwork": artwork,
         "agent": agent,
         "catalog": [
             {"id": "gmail", "name": "Gmail", "desc": "Read-only inbox monitoring"},
             {"id": "text", "name": "Text Messages", "desc": "Your phone's texts, via Phone Link"},
             {"id": "classifier", "name": "AI classifier",
              "desc": "Smart prioritization (with fallback)"},
-            {"id": "artwork", "name": "Game artwork",
-             "desc": "Real logos for non-Steam games in recaps"},
         ],
         "settings": {
             "Version": __version__,

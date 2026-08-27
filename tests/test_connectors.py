@@ -126,7 +126,7 @@ def test_catalog_present_in_connections(client):
     ids = [c["id"] for c in body["catalog"]]
     # Discord + Slack aren't configurable connectors on the local app, so the
     # catalog only offers the ones you actually set up.
-    assert ids == ["gmail", "text", "classifier", "artwork"]
+    assert ids == ["gmail", "text", "classifier"]
 
 
 def _post_text(client, ext="t1"):
@@ -182,34 +182,3 @@ def test_text_probe_detects_a_text_after_since(client):
     # A baseline AFTER the text must not re-report it (no false positive).
     later = client.get("/connectors/text/probe", params={"since": got["now"]}).json()
     assert later["captured"] is False
-
-
-def test_steamgriddb_key_verify_store_and_expose(client, monkeypatch):
-    """The game-art (SteamGridDB) key connector: a bad key is rejected at save,
-    a good key is stored + exposed only as a boolean + sets the art env, and the
-    'artwork' connector flips to connected. Verify is mocked (no network)."""
-    import app.api.art as art_api  # the endpoint imports verify from here
-
-    # Reject a bad key (don't store).
-    monkeypatch.setattr(art_api, "verify_steamgriddb_key",
-                        lambda k, **kw: (False, "SteamGridDB rejected that key"))
-    r = client.post("/settings/steamgriddb", json={"api_key": "bad"})
-    assert r.status_code == 400
-    assert client.get("/settings").json()["steamgriddb_api_key_set"] is False
-
-    # Accept a good key.
-    monkeypatch.setattr(art_api, "verify_steamgriddb_key", lambda k, **kw: (True, ""))
-    r = client.post("/settings/steamgriddb", json={"api_key": "good-key"})
-    assert r.status_code == 200 and r.json()["api_key_set"] is True
-    s = client.get("/settings").json()
-    assert s["steamgriddb_api_key_set"] is True
-    assert "steamgriddb_api_key" not in s  # the secret itself is never returned
-
-    # The artwork connector now reads connected.
-    art = client.get("/connections").json()["artwork"]
-    assert art["state"] == "connected"
-
-    # Clearing it removes the key + flips back to disconnected.
-    r = client.post("/settings/steamgriddb", json={"api_key": ""})
-    assert r.status_code == 200 and r.json()["api_key_set"] is False
-    assert client.get("/connections").json()["artwork"]["state"] == "disconnected"

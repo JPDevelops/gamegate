@@ -45,11 +45,6 @@ async def lifespan(app: FastAPI):
     if _key:
         os.environ["OPENAI_API_KEY"] = _key
     os.environ["CLASSIFIER_ENABLED"] = "true" if _ss.get_all()["classifier_enabled"] else "false"
-    # Same for the SteamGridDB (game-art) key — the /art endpoint reads it from
-    # the environment, so load the saved key so logos survive restarts.
-    _grid = _ss.get_steamgriddb_key()
-    if _grid:
-        os.environ["STEAMGRIDDB_API_KEY"] = _grid
     # Start the local Gmail (IMAP + app password) poller if the user connected it.
     # Best-effort: a startup hiccup here must never stop the app from serving.
     try:
