@@ -75,6 +75,12 @@ HELPER_PROCESSES = {
     "easyanticheat.exe", "battle.net.exe", "riotclientservices.exe",
     "wallpaper32.exe", "wallpaper64.exe", "ui32.exe", "ui64.exe",
     "wallpaperservice32_c.exe", "webwallpaper32.exe", "webwallpaper64.exe",
+    # Game LAUNCHERS / launch helpers — they live in game folders (or under
+    # C:\XboxGames\) and run briefly while starting the real game, creating junk
+    # 5-second "sessions" (Jules, 2026-08-27: a "Gamelaunchhelper" recap next to
+    # the real Minecraft one). The actual game (e.g. Minecraft.Windows.exe) is
+    # detected on its own; these helpers never should be.
+    "gamelaunchhelper.exe", "minecraftlauncher.exe",
 }
 
 # Built-in "this IS a game" process names for popular titles that DON'T live in a
