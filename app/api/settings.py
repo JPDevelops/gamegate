@@ -25,10 +25,6 @@ class ClassifierConfig(BaseModel):
     api_key: str | None = None  # omit to keep the existing key; "" clears it
 
 
-class SteamGridConfig(BaseModel):
-    api_key: str | None = None  # "" clears it; None is a no-op
-
-
 @router.get("/settings")
 def read_settings(service: SettingsDep) -> dict:
     return service.get_all()
@@ -71,28 +67,6 @@ def set_classifier(config: ClassifierConfig, service: SettingsDep) -> dict:
         "api_key_set": settings["classifier_api_key_set"],
         "note": note,
     }
-
-
-@router.post("/settings/steamgriddb")
-def set_steamgriddb(config: SteamGridConfig, service: SettingsDep) -> dict:
-    """Set (or clear) the SteamGridDB API key that powers game-art lookups for
-    non-Steam titles (Minecraft, emulators, itch games, …). Verified before
-    saving so a bad key is caught here, not silently. Stored locally, never
-    returned; applied to os.environ immediately so /art picks it up at once."""
-    from app.api.art import verify_steamgriddb_key
-    note = ""
-    if config.api_key is not None:
-        key = config.api_key.strip()
-        if key:
-            ok, note = verify_steamgriddb_key(key)
-            if not ok:
-                raise HTTPException(status_code=400, detail=note)
-            service.set_steamgriddb_key(key)
-            os.environ["STEAMGRIDDB_API_KEY"] = key
-        else:
-            service.set_steamgriddb_key("")
-            os.environ.pop("STEAMGRIDDB_API_KEY", None)
-    return {"api_key_set": service.get_all()["steamgriddb_api_key_set"], "note": note}
 
 
 class GmailConfig(BaseModel):

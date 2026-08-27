@@ -29,30 +29,6 @@ def _client() -> httpx.Client:
     return httpx.Client(timeout=8)
 
 
-def verify_steamgriddb_key(api_key: str, client_factory=_client) -> tuple[bool, str]:
-    """(ok, note) — check a SteamGridDB key by making one authenticated call, so a
-    bad key is caught at save time (same contract as the OpenAI-key check). A
-    REJECTED key → (False, reason, don't save); a NETWORK problem → (True, soft
-    note) so we don't punish the user for being briefly offline."""
-    key = (api_key or "").strip()
-    if not key:
-        return False, "Enter your SteamGridDB API key."
-    try:
-        with client_factory() as client:
-            resp = client.get(
-                f"{API_BASE}/search/autocomplete/{quote('minecraft', safe='')}",
-                headers={"Authorization": f"Bearer {key}"},
-            )
-        if resp.status_code in (401, 403):
-            return False, "SteamGridDB rejected that key — check it and try again."
-        if resp.status_code >= 400:
-            return True, f"Couldn't verify right now (HTTP {resp.status_code}); saved anyway."
-        return True, ""
-    except httpx.HTTPError as exc:  # network/DNS/TLS: can't verify now
-        log.warning("SteamGridDB key verify unreachable: %s", exc)
-        return True, "Couldn't reach SteamGridDB to verify; saved anyway."
-
-
 def _negative_expired(fetched_at: str) -> bool:
     try:
         when = datetime.fromisoformat(fetched_at)
