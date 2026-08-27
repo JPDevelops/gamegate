@@ -552,6 +552,7 @@ const views = {
       + conn("gmail", "Gmail", c.gmail)
       + (c.text ? conn("text", "Text Messages", c.text) : "")
       + conn("classifier", "AI classifier", c.classifier)
+      + (c.artwork ? conn("artwork", "Game artwork", c.artwork) : "")
       + `<button class="fab" onclick="showCatalog()">${I.plus} Add a connector</button>`;
   },
   settings() {
@@ -730,11 +731,70 @@ async function connAction(id, action) {
     setTimeout(async () => { await refresh(); route(); }, 400);
     return;
   }
+  // Game artwork: "Add key" opens a SteamGridDB key pop-up; "Disconnect" clears
+  // the key (recaps fall back to clean name-only cards).
+  if (id === "artwork") {
+    if (action === "connect") { showGridKeyModal(); return; }
+    const r = await fetch("/settings/steamgriddb", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: "" }) });
+    if (!r.ok) alert("Couldn't turn game artwork off.");
+    setTimeout(async () => { await refresh(); route(); }, 400);
+    return;
+  }
   const r = await fetch(`/connectors/${id}/${action}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
   if (body.authorize) { location.href = body.authorize; return; }
   if (!r.ok) { alert(body.detail || "That didn't work."); }
   setTimeout(async () => { await refresh(); route(); }, 800);
+}
+function showGridKeyModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "catalog-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const hasKey = cache.userSettings && cache.userSettings.steamgriddb_api_key_set;
+  overlay.innerHTML = `<div class="catalog">
+    <h2>Show game logos</h2>
+    <div class="muted" style="margin-bottom:12px">GameGate can pull real cover art for non‑Steam games (Minecraft, emulators, itch games…) from <b>SteamGridDB</b>, a free community art site. Make a free account, generate an API key at <b>steamgriddb.com → Preferences → API</b>, and paste it below. Stored only on this PC.</div>
+    <input id="gridKeyInput" class="setinput" type="password" autocomplete="off" style="width:100%"
+      placeholder="${hasKey ? '•••••••• (saved — paste to replace)' : 'your SteamGridDB API key'}">
+    <div id="gridKeyStatus" style="min-height:18px;margin-top:8px;font-size:13px"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px">
+      <button class="btn" onclick="this.closest('.catalog-overlay').remove()">Cancel</button>
+      <button class="btn green" id="gridSaveBtn" onclick="saveGridKey(this)">Save &amp; connect</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  const inp = overlay.querySelector("#gridKeyInput");
+  if (inp) {
+    inp.focus();
+    inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") saveGridKey(overlay.querySelector("#gridSaveBtn")); });
+    inp.addEventListener("input", () => { overlay.querySelector("#gridKeyStatus").textContent = ""; });
+  }
+}
+async function saveGridKey(btn) {
+  const overlay = btn.closest(".catalog-overlay");
+  const input = overlay.querySelector("#gridKeyInput");
+  const status = overlay.querySelector("#gridKeyStatus");
+  const setStatus = (m, c) => { status.textContent = m; status.style.color = c || "var(--muted, #8a94a6)"; };
+  const key = (input.value || "").trim();
+  if (!key) { setStatus("Please paste your key.", "#ff6b6b"); input.focus(); return; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Checking…"; setStatus("Checking your key…", "");
+  let r, b;
+  try {
+    r = await fetch("/settings/steamgriddb", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: key }) });
+    b = await r.json().catch(() => ({}));
+  } catch (e) {
+    setStatus("Couldn't reach GameGate — try again.", "#ff6b6b"); btn.disabled = false; btn.textContent = orig; return;
+  }
+  if (!r.ok) {
+    setStatus(b.detail || "Couldn't save the key.", "#ff6b6b");
+    btn.disabled = false; btn.textContent = orig; input.focus(); input.select();
+    return;
+  }
+  const offline = b.note && b.note.toLowerCase().includes("couldn't");
+  setStatus(offline ? b.note : "Connected ✓", offline ? "#e0b64a" : "var(--green, #2ee06f)");
+  setTimeout(() => { overlay.remove(); refresh().then(route); }, 900);
 }
 function showAiKeyModal() {
   const overlay = document.createElement("div");
