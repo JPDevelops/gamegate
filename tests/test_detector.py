@@ -310,3 +310,61 @@ def test_config_path_prefers_real_config_beside_loose_exe(tmp_path, monkeypatch)
     monkeypatch.setattr(d.sys, "frozen", True, raising=False)
     monkeypatch.setattr(d, "app_dir", lambda: dist)
     assert d.config_path() == dist / "config.json"
+
+
+# --- Minecraft: Bedrock by name, Java by command line (2026-08-27) -----------
+
+def test_minecraft_bedrock_detected_by_name():
+    from detector import detect_game
+    procs = {**DESKTOP,
+             "minecraft.windows.exe": r"c:\program files\windowsapps\microsoft.minecraftuwp_x\minecraft.windows.exe"}
+    assert detect_game(procs, [], True, no_steam, None, lambda: False) == "minecraft.windows.exe"
+
+
+def test_minecraft_bedrock_display_is_clean():
+    from detector import resolve_display
+    name, app_id = resolve_display(
+        "minecraft.windows.exe",
+        {"minecraft.windows.exe": r"c:\...\windowsapps\...\minecraft.windows.exe"},
+    )
+    assert name == "Minecraft" and app_id is None
+
+
+def test_minecraft_java_detected_by_cmdline_reader():
+    from detector import _MINECRAFT_JAVA, detect_game, resolve_display
+    # javaw.exe alone is NOT a game (would false-positive every Java app); only the
+    # cmdline reader saying "yes, minecraft" (with a java process present) turns it on.
+    procs = {**DESKTOP, "javaw.exe": r"c:\users\x\.minecraft\runtime\bin\javaw.exe"}
+    assert detect_game(procs, [], True, no_steam, None, lambda: True) == _MINECRAFT_JAVA
+    assert resolve_display(_MINECRAFT_JAVA, {}) == ("Minecraft", None)
+
+
+def test_bare_javaw_without_minecraft_is_not_gaming():
+    from detector import detect_game
+    # A Java IDE/other Java app: javaw.exe present, reader says not-minecraft -> None.
+    procs = {**DESKTOP, "javaw.exe": r"c:\program files\jetbrains\idea\bin\javaw.exe"}
+    assert detect_game(procs, [], True, no_steam, None, lambda: False) is None
+
+
+def test_minecraft_java_cmdline_matcher(monkeypatch):
+    import importlib.util
+    if importlib.util.find_spec("psutil") is None:
+        import pytest
+        pytest.skip("psutil not installed in this env")
+    import detector
+    import psutil
+
+    class P:
+        def __init__(self, name, cmdline):
+            self.info = {"name": name, "cmdline": cmdline}
+
+    # A real Minecraft Java command line references the client main class + gameDir.
+    mc = P("javaw.exe", ["javaw.exe", "-Xmx4G", "net.minecraft.client.main.Main",
+                         "--gameDir", r"C:\Users\x\AppData\Roaming\.minecraft"])
+    ide = P("javaw.exe", ["javaw.exe", "-jar", "idea.jar"])
+    chrome = P("chrome.exe", ["chrome.exe"])
+
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: [chrome, ide, mc])
+    assert detector.windows_minecraft_java_running() is True
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: [chrome, ide])
+    assert detector.windows_minecraft_java_running() is False
