@@ -77,6 +77,17 @@ HELPER_PROCESSES = {
     "wallpaperservice32_c.exe", "webwallpaper32.exe", "webwallpaper64.exe",
 }
 
+# Built-in "this IS a game" process names for popular titles that DON'T live in a
+# recognized launcher folder, so the path/Steam layers miss them (Jules played
+# Minecraft 4h and it never registered, 2026-08-27). Maps the exe name -> a clean
+# label. Only UNAMBIGUOUS names belong here. Minecraft Bedrock ships as
+# Minecraft.Windows.exe under WindowsApps; Java Edition is handled separately (it
+# runs as the generic javaw.exe, matched on its command line — see below).
+KNOWN_GAMES = {
+    "minecraft.windows.exe": "Minecraft",
+}
+_MINECRAFT_JAVA = "minecraft-java"  # sentinel for Java Edition (generic javaw.exe)
+
 
 def app_dir() -> Path:
     """Folder the app lives in. For a PyInstaller onefile build, __file__
@@ -291,6 +302,10 @@ def resolve_display(game: str, processes: dict[str, str]) -> tuple[str, str | No
     """Human name + optional Steam appid for the detected game label.
     Name resolution order: Steam manifest → Epic manifest → GOG info →
     prettified exe. Artwork id only exists for Steam titles."""
+    if game in KNOWN_GAMES:
+        return KNOWN_GAMES[game], None
+    if game == _MINECRAFT_JAVA:
+        return "Minecraft", None
     exe_path = processes.get(game, "")
     if exe_path:
         identity = steam_game_identity(exe_path)
@@ -303,6 +318,35 @@ def resolve_display(game: str, processes: dict[str, str]) -> tuple[str, str | No
     if game.startswith("steam-app-"):
         return game, game.removeprefix("steam-app-")
     return prettify_exe(game), None
+
+
+def windows_minecraft_java_running() -> bool:
+    """True if Minecraft: Java Edition is running.
+
+    Java Edition runs as the generic javaw.exe/java.exe — matching that by name
+    would flag EVERY Java app (IDEs, servers, other Java games) as gaming, exactly
+    the false-positive class that locked GAMING forever (Wallpaper Engine, N…). So
+    we match the COMMAND LINE instead, which always references minecraft (the
+    net.minecraft client main class, --gameDir, the versioned jar, the natives
+    path). Precise and safe. Best-effort: any error or non-Windows -> False."""
+    try:
+        import psutil
+    except ImportError:
+        return False
+    try:
+        for proc in psutil.process_iter(["name", "cmdline"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                if name not in ("javaw.exe", "java.exe"):
+                    continue
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+                if "minecraft" in cmdline:
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception:  # noqa: BLE001 — never let detection crash the poll
+        return False
+    return False
 
 
 def windows_steam_running_app_id() -> int:
@@ -325,9 +369,11 @@ def detect_game(
     auto_detect: bool = True,
     steam_app_id_reader=windows_steam_running_app_id,
     ignore_list: list[str] | None = None,
+    minecraft_java_reader=windows_minecraft_java_running,
 ) -> str | None:
     """Return the detected game's label, or None. Layered:
-    manual list → launcher-folder paths → Steam registry."""
+    manual list → built-in known games → launcher-folder paths → Steam registry
+    → Minecraft Java (command line)."""
     ignored = HELPER_PROCESSES | set(ignore_list or [])
     for name in manual_list:
         if name in processes:
@@ -335,6 +381,11 @@ def detect_game(
 
     if not auto_detect:
         return None
+
+    # Built-in known games (popular titles outside any launcher folder).
+    for name in KNOWN_GAMES:
+        if name in processes and name not in ignored:
+            return name
 
     for name, exe_path in processes.items():
         if name in ignored:
@@ -345,6 +396,11 @@ def detect_game(
     app_id = steam_app_id_reader()
     if app_id:
         return f"steam-app-{app_id}"
+
+    # Minecraft Java Edition: generic javaw.exe, identified by its command line.
+    # Only pay for the cmdline scan when a Java process is actually running.
+    if ("javaw.exe" in processes or "java.exe" in processes) and minecraft_java_reader():
+        return _MINECRAFT_JAVA
 
     return None
 
