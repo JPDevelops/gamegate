@@ -417,3 +417,23 @@ def test_named_layers_win_over_fullscreen_catchall():
     got = detect_game({**DESKTOP, **STEAM_GAME}, [], True, no_steam, None,
                       lambda: False, lambda: "helldivers2.exe")
     assert got == "helldivers2.exe"  # matched by the launcher-path layer first
+
+
+def test_game_launch_helpers_are_not_games():
+    """Junk-session bug (2026-08-27): GameLaunchHelper.exe (Xbox/Store launch
+    helper, lives under C:\\XboxGames\\) ran 5s before Minecraft and got logged as
+    its own game session. Launch helpers must never count as a game — even when
+    they sit in a recognized library/xbox folder."""
+    from detector import detect_game
+    procs = {
+        **DESKTOP,
+        "gamelaunchhelper.exe": r"c:\xboxgames\minecraft\content\gamelaunchhelper.exe",
+        "minecraftlauncher.exe": r"c:\program files\minecraft launcher\minecraftlauncher.exe",
+    }
+    # No fullscreen, no steam, no java-minecraft -> the launcher helpers in an
+    # xbox/library path must NOT be picked up.
+    assert detect_game(procs, [], True, no_steam, None, lambda: False, lambda: None) is None
+    # And the real game still wins when it's there.
+    procs["minecraft.windows.exe"] = r"c:\xboxgames\minecraft\content\minecraft.windows.exe"
+    assert detect_game(procs, [], True, no_steam, None, lambda: False,
+                       lambda: None) == "minecraft.windows.exe"
